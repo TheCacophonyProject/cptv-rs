@@ -1,0 +1,14 @@
+[package]
+name = "cptv-rs"
+version = "0.1.0"
+authors = ["Jon Hardie <jon@hardiesoft.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+nom = "5.0.1"
+libflate = "0.1.27"
+derivative = "1.0.3"
+png = "0.15.0"
+zstd = "0.4.14"
