@@ -18,7 +18,7 @@ fn main() -> std::result::Result<(), std::boxed::Box<dyn std::error::Error>> {
             gz_decoder.read_to_end(&mut decoded)?;
             match decode_cptv(&decoded) {
                 Ok((_, cptv)) => {
-                    // dump_png_frames(&cptv);
+                    //dump_png_frames(&cptv);
                     try_compression(&cptv);
                 }
                 Err(Err::Error((remaining, e))) => {
@@ -53,8 +53,7 @@ struct CptvHeader {
     accuracy: Option<f32>,
 }
 
-type FrameData = [[u16; 160]; 120];
-type DeltaFrameData = [[i16; 160]; 120];
+type FrameData = [[i16; 160]; 120];
 
 #[derive(Derivative)]
 #[derivative(Debug)]
@@ -215,7 +214,8 @@ fn decode_image_data(
         0
     };
     // Seed the initial pixel value
-    frame.image_data[0][0] = (prev_px as i32 + current_px) as u16;
+    assert!(prev_px as i32 + current_px <= std::i16::MAX as i32);
+    frame.image_data[0][0] = (prev_px as i32 + current_px) as i16;
     for (index, delta) in BitUnpacker::new(i, frame.bit_width)
         .take((width * height) - 1)
         .enumerate()
@@ -230,7 +230,8 @@ fn decode_image_data(
         } else {
             0
         };
-        frame.image_data[y][x] = (prev_px as i32 + current_px) as u16;
+        assert!(prev_px as i32 + current_px <= std::i16::MAX as i32);
+        frame.image_data[y][x] = (prev_px as i32 + current_px) as i16;
     }
 }
 
@@ -247,7 +248,7 @@ fn decode_frame<'a>(
         bit_width: 0,
         frame_size: 0,
         last_ffc_time: 0,
-        image_data: [[0u16; 160]; 120],
+        image_data: [[0i16; 160]; 120],
     };
     let mut outer = i;
     for _ in 0..num_frame_fields as usize {
@@ -316,17 +317,18 @@ fn decode_cptv(i: &[u8]) -> nom::IResult<&[u8], Cptv> {
 
 fn dump_png_frames(cptv: &Cptv) {
     // Work out the dynamic range to scale here:
-    let mut min = std::u16::MAX;
+    let mut min = std::i16::MAX;
     let mut max = 0;
     for frame in &cptv.frames {
         for y in 0..cptv.meta.height as usize {
             for x in 0..cptv.meta.width as usize {
                 let val = frame.image_data[y][x];
-                min = u16::min(val, min);
-                max = u16::max(val, max);
+                min = i16::min(val, min);
+                max = i16::max(val, max);
             }
         }
     }
+    // Can we work out the greatest delta between any two adjacent pixels?
     let inv_dynamic_range = 1.0 / (max - min) as f32;
 
     for (index, frame) in cptv.frames.iter().enumerate() {
@@ -355,110 +357,65 @@ fn try_compression(cptv: &Cptv) {
     let i_frame_interval = 9 * 5;
     let mut delta_frames = Vec::new();
     for (frame_index, frames) in cptv.frames.windows(2).enumerate() {
-        let is_i_frame = frame_index % i_frame_interval == 0;
         let is_first_frame = frame_index == 0;
+        let frame_index = frame_index + 1;
+        let is_i_frame = frame_index % i_frame_interval == 0;
 
         let frame_a = &frames[0];
         let frame_b = &frames[1];
 
         if is_first_frame {
-            let mut delta_data: DeltaFrameData = [[0i16; 160]; 120];
-            for y in 0..cptv.meta.height as usize {
-                for x in 0..cptv.meta.width as usize {
-                    delta_data[y][x] = frame_a.image_data[y][x] as i16;
-                }
-            }
-            delta_frames.push(delta_data);
-        } else {
-            let mut delta_data: DeltaFrameData = [[0i16; 160]; 120];
-            // Still delta compress the frame:
-
-            for y in 0..cptv.meta.height as usize {
-                for x in 0..cptv.meta.width as usize {
-                    delta_data[y][x] = frame_a.image_data[y][x] as i16;
-                }
-            }
-
-            //            let side = 4;
-            //            let mut y = 0;
-            //            let mut x = 0;
-            //            while y < cptv.meta.height as usize {
-            //                while x < cptv.meta.height as usize {
-            //                    // Delta encode a 4x4 block in 2 passes:
-            //                    delta_data[y][x] = frame_b.image_data[y][x] as i16;
-            //                    delta_data[y + 1][x] = frame_b.image_data[y + 1][x] as i16 - delta_data[y][x];
-            //                    delta_data[y + 2][x] =
-            //                        frame_b.image_data[y + 2][x] as i16 - delta_data[y + 1][x];
-            //                    delta_data[y + 3][x] =
-            //                        frame_b.image_data[y + 3][x] as i16 - delta_data[y + 2][x];
-            //                    x += 1;
-            //
-            //                    delta_data[y][x] = frame_b.image_data[y][x] as i16;
-            //                    delta_data[y + 1][x] = frame_b.image_data[y + 1][x] as i16 - delta_data[y][x];
-            //                    delta_data[y + 2][x] =
-            //                        frame_b.image_data[y + 2][x] as i16 - delta_data[y + 1][x];
-            //                    delta_data[y + 3][x] =
-            //                        frame_b.image_data[y + 3][x] as i16 - delta_data[y + 2][x];
-            //                    x += 1;
-            //
-            //                    delta_data[y][x] = frame_b.image_data[y][x] as i16;
-            //                    delta_data[y + 1][x] = frame_b.image_data[y + 1][x] as i16 - delta_data[y][x];
-            //                    delta_data[y + 2][x] =
-            //                        frame_b.image_data[y + 2][x] as i16 - delta_data[y + 1][x];
-            //                    delta_data[y + 3][x] =
-            //                        frame_b.image_data[y + 3][x] as i16 - delta_data[y + 2][x];
-            //                    x += 1;
-            //
-            //                    delta_data[y][x] = frame_b.image_data[y][x] as i16;
-            //                    delta_data[y + 1][x] = frame_b.image_data[y + 1][x] as i16 - delta_data[y][x];
-            //                    delta_data[y + 2][x] =
-            //                        frame_b.image_data[y + 2][x] as i16 - delta_data[y + 1][x];
-            //                    delta_data[y + 3][x] =
-            //                        frame_b.image_data[y + 3][x] as i16 - delta_data[y + 2][x];
-            //                    x += 1;
-            //                }
-            //                y += side;
-            //            }
-            //            while y < cptv.meta.height as usize {
-            //                while x < cptv.meta.height as usize {
-            //                    // Delta encode a 4x4 block in 2 passes:
-            //                    delta_data[y][x] = frame_b.image_data[y][x] as i16;
-            //                    delta_data[y][x] = frame_b.image_data[y + 1][x] as i16 - delta_data[y][x];
-            //                    delta_data[y][x] = frame_b.image_data[y][x] as i16 - delta_data[y + 1][x];
-            //                    delta_data[y][x] = frame_b.image_data[y][x] as i16 - delta_data[y + 2][x];
-            //
-            //                    delta_data[y][x] = frame_b.image_data[y][x] as i16;
-            //                    delta_data[y + 1][x] = frame_b.image_data[y + 1][x] as i16 - delta_data[y][x];
-            //                    delta_data[y + 2][x] =
-            //                        frame_b.image_data[y + 2][x] as i16 - delta_data[y + 1][x];
-            //                    delta_data[y + 3][x] =
-            //                        frame_b.image_data[y + 3][x] as i16 - delta_data[y + 2][x];
-            //
-            //                    delta_data[y][x] = frame_b.image_data[y][x] as i16;
-            //                    delta_data[y + 1][x] = frame_b.image_data[y + 1][x] as i16 - delta_data[y][x];
-            //                    delta_data[y + 2][x] =
-            //                        frame_b.image_data[y + 2][x] as i16 - delta_data[y + 1][x];
-            //                    delta_data[y + 3][x] =
-            //                        frame_b.image_data[y + 3][x] as i16 - delta_data[y + 2][x];
-            //
-            //                    delta_data[y][x] = frame_b.image_data[y][x] as i16;
-            //                    delta_data[y + 1][x] = frame_b.image_data[y + 1][x] as i16 - delta_data[y][x];
-            //                    delta_data[y + 2][x] =
-            //                        frame_b.image_data[y + 2][x] as i16 - delta_data[y + 1][x];
-            //                    delta_data[y + 3][x] =
-            //                        frame_b.image_data[y + 3][x] as i16 - delta_data[y + 2][x];
-            //                }
-            //                y += side;
-            //            }
-            if !is_i_frame {
-                for y in 0..cptv.meta.height as usize {
-                    for x in 0..cptv.meta.width as usize {
-                        delta_data[y][x] = frame_b.image_data[y][x] as i16 - delta_data[y][x];
-                    }
-                }
-            }
-            delta_frames.push(delta_data);
+            delta_frames.push(delta_compress_frame(&frame_a.image_data));
         }
+        //let mut d: FrameData = [[0i16; 160]; 120];
+        // Still delta compress the frame:
+        let d = if !is_i_frame {
+            let mut d: FrameData = [[0i16; 160]; 120];
+            for y in 0..cptv.meta.height as usize {
+                for x in 0..cptv.meta.width as usize {
+                    d[y][x] = frame_b.image_data[y][x] - frame_a.image_data[y][x];
+                }
+            }
+            d
+        } else {
+            delta_compress_frame(&frame_b.image_data)
+        };
+        /*
+        let side = 4;
+        let mut y = 0;
+        let mut x = 0;
+        while y < cptv.meta.height as usize {
+            while x < cptv.meta.height as usize {
+                // Delta encode a 4x4 block in 2 passes:
+                for i in 0..side {
+                    let x = x + i;
+                    d[y + 0][x] = d[y + 0][x];
+                    d[y + 1][x] = d[y + 1][x] - d[y + 0][x];
+                    d[y + 2][x] = d[y + 2][x] - d[y + 1][x];
+                    d[y + 3][x] = d[y + 3][x] - d[y + 2][x];
+                }
+                x += side;
+            }
+            y += side;
+        }
+        let mut y = 0;
+        let mut x = 0;
+        while y < cptv.meta.height as usize {
+            while x < cptv.meta.height as usize {
+                // Delta encode a 4x4 block in 2 passes:
+                for i in 0..side {
+                    let y = y + i;
+                    d[y][x + 0] = d[y][x + 0];
+                    d[y][x + 1] = d[y][x + 1] - d[y][x + 0];
+                    d[y][x + 2] = d[y][x + 2] - d[y][x + 1];
+                    d[y][x + 3] = d[y][x + 3] - d[y][x + 2];
+                }
+                x += side;
+            }
+            y += side;
+        }
+        */
+        delta_frames.push(d);
     }
     for frame in delta_frames {
         // Copy into vector for compression
@@ -479,4 +436,8 @@ fn try_compression(cptv: &Cptv) {
     }
     println!("All frames {}", frames_size);
     // Do better delta compression:
+}
+
+fn delta_compress_frame(data: &FrameData) -> FrameData {
+    data.clone()
 }
