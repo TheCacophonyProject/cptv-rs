@@ -5,6 +5,7 @@ use nom::{bytes::complete::*, Err};
 use std::fmt::{Error, Formatter};
 use std::fs::File;
 use std::io::{BufWriter, Read};
+use std::ops::{Index, IndexMut};
 use std::path::Path;
 use std::{fmt, fs};
 
@@ -53,7 +54,37 @@ struct CptvHeader {
     accuracy: Option<f32>,
 }
 
-type FrameData = [[i16; 160]; 120];
+#[derive(Clone, Copy)]
+struct FrameData([[i16; 160]; 120]);
+
+impl FrameData {
+    pub fn empty() -> FrameData {
+        FrameData([[0i16; 160]; 120])
+    }
+
+    pub fn as_slice(&self) -> &[u8] {
+        unsafe {
+            std::slice::from_raw_parts(
+                &self[0] as *const i16 as *const u8,
+                std::mem::size_of_val(self),
+            )
+        }
+    }
+}
+
+impl Index<usize> for FrameData {
+    type Output = [i16; 160];
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.0[index]
+    }
+}
+
+impl IndexMut<usize> for FrameData {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.0[index]
+    }
+}
 
 #[derive(Derivative)]
 #[derivative(Debug)]
@@ -248,7 +279,7 @@ fn decode_frame<'a>(
         bit_width: 0,
         frame_size: 0,
         last_ffc_time: 0,
-        image_data: [[0i16; 160]; 120],
+        image_data: FrameData::empty(),
     };
     let mut outer = i;
     for _ in 0..num_frame_fields as usize {
@@ -358,28 +389,26 @@ fn try_compression(cptv: &Cptv) {
     let mut delta_frames = Vec::new();
     for (frame_index, frames) in cptv.frames.windows(2).enumerate() {
         let is_first_frame = frame_index == 0;
-        let frame_index = frame_index + 1;
         let is_i_frame = frame_index % i_frame_interval == 0;
+        let frame_index = frame_index + 1;
 
         let frame_a = &frames[0];
         let frame_b = &frames[1];
 
+        // Delta between frames, then in frame?
         if is_first_frame {
             delta_frames.push(delta_compress_frame(&frame_a.image_data));
-        }
-        //let mut d: FrameData = [[0i16; 160]; 120];
-        // Still delta compress the frame:
-        let d = if !is_i_frame {
-            let mut d: FrameData = [[0i16; 160]; 120];
+        } else if is_i_frame {
+            delta_frames.push(delta_compress_frame(&frame_b.image_data));
+        } else {
+            let mut d: FrameData = FrameData::empty();
             for y in 0..cptv.meta.height as usize {
                 for x in 0..cptv.meta.width as usize {
                     d[y][x] = frame_b.image_data[y][x] - frame_a.image_data[y][x];
                 }
             }
-            d
-        } else {
-            delta_compress_frame(&frame_b.image_data)
-        };
+            delta_frames.push(delta_compress_frame(&d));
+        }
         /*
         let side = 4;
         let mut y = 0;
@@ -415,27 +444,18 @@ fn try_compression(cptv: &Cptv) {
             y += side;
         }
         */
-        delta_frames.push(d);
     }
-    for frame in delta_frames {
-        // Copy into vector for compression
-        let mut frame_data = Vec::new();
-        for y in 0..cptv.meta.height as usize {
-            for x in 0..cptv.meta.width as usize {
-                frame_data.push(frame[y][x]);
-            }
-        }
-        let u8_slice = unsafe {
-            std::slice::from_raw_parts(frame_data.as_ptr() as *const u8, frame_data.len() * 2)
-        };
-        let compressed = zstd::encode_all(u8_slice, 9);
+    // IDEA: Since we are only making it so you can go to the beginning of each iframe to start
+    //  decode, we should also make the subsequent frames up until the next iframe part of the zstd
+    //  compression, for additional size reductions.
+    for (index, frame) in delta_frames.iter().enumerate() {
+        let compressed = zstd::encode_all(frame.as_slice(), 9);
         if let Ok(compressed) = compressed {
             frames_size += compressed.len();
             println!("Zstd frame: {}", compressed.len());
         }
     }
     println!("All frames {}", frames_size);
-    // Do better delta compression:
 }
 
 fn delta_compress_frame(data: &FrameData) -> FrameData {
