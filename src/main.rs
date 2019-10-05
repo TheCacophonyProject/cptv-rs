@@ -1,11 +1,15 @@
 use derivative::Derivative;
-use libflate::gzip::Decoder;
+use libflate::gzip::Encoder;
+use libflate::gzip::{Decoder, EncodeOptions};
+use libflate::lz77::DefaultLz77Encoder;
+use libflate::zlib::Lz77WindowSize;
 use nom::number::complete::{le_f32, le_u32, le_u64, le_u8};
 use nom::{bytes::complete::*, Err};
+use std::collections::HashMap;
 use std::fmt::{Error, Formatter};
 use std::fs::File;
-use std::io::{BufWriter, Read};
-use std::ops::{Index, IndexMut};
+use std::io::{BufWriter, Read, Write};
+use std::ops::{Index, IndexMut, Range, RangeInclusive};
 use std::path::Path;
 use std::{fmt, fs};
 
@@ -14,6 +18,7 @@ fn main() -> std::result::Result<(), std::boxed::Box<dyn std::error::Error>> {
     // 20190922-021916
     match fs::read("20190922-021916.cptv") {
         Ok(input) => {
+            println!("Input size {}", input.len());
             let mut gz_decoder = Decoder::new(&input[..])?;
             let mut decoded = Vec::new();
             gz_decoder.read_to_end(&mut decoded)?;
@@ -346,22 +351,35 @@ fn decode_cptv(i: &[u8]) -> nom::IResult<&[u8], Cptv> {
     Ok((i, Cptv { frames, meta }))
 }
 
+fn get_dynamic_range(frame: &FrameData) -> RangeInclusive<i16> {
+    let mut frame_max = 0;
+    let mut frame_min = std::i16::MAX;
+    for y in 0..frame.0.len() as usize {
+        for x in 0..frame[0].len() as usize {
+            let val = frame[y][x];
+            frame_max = i16::max(val, frame_max);
+            frame_min = i16::min(val, frame_min);
+        }
+    }
+    frame_min..=frame_max
+}
+
 fn dump_png_frames(cptv: &Cptv) {
     // Work out the dynamic range to scale here:
     let mut min = std::i16::MAX;
     let mut max = 0;
     for frame in &cptv.frames {
-        for y in 0..cptv.meta.height as usize {
-            for x in 0..cptv.meta.width as usize {
-                let val = frame.image_data[y][x];
-                min = i16::min(val, min);
-                max = i16::max(val, max);
-            }
-        }
+        let frame_range = get_dynamic_range(&frame.image_data);
+        min = i16::min(*frame_range.start(), min);
+        max = i16::max(*frame_range.end(), max);
     }
-    // Can we work out the greatest delta between any two adjacent pixels?
-    let inv_dynamic_range = 1.0 / (max - min) as f32;
+    println!(
+        "dynamic range across entire clip {:?}, range {}",
+        min..=max,
+        (min..max).len()
+    );
 
+    let inv_dynamic_range = 1.0 / (max - min) as f32;
     for (index, frame) in cptv.frames.iter().enumerate() {
         let p = format!("out/image_{}.png", index);
         let path = Path::new(&p);
@@ -383,23 +401,126 @@ fn dump_png_frames(cptv: &Cptv) {
     }
 }
 
+// Need to serialise this:
+struct ClipHeader {
+    magic_bytes: [u8; 4],
+    version: u8,
+    timestamp: u64,
+    width: u32,
+    height: u32,
+    compression: u8, // None, zlib. zstd?
+    device_name: String,
+
+    motion_config: Option<String>,
+    preview_secs: Option<u8>,
+    latitude: Option<f32>,
+    longitude: Option<f32>,
+    loc_timestamp: Option<u64>,
+    altitude: Option<f32>,
+    accuracy: Option<f32>,
+}
+
+struct ClipToc {
+    num_frames: u32,
+    frames_per_iframe: u32,
+    fps: u8,
+    length: u32,
+    // length x u32 offsets into the compressed stream.
+}
+
+impl ClipHeader {
+    pub fn as_slice(&self) -> &[u8] {
+        unsafe {
+            std::slice::from_raw_parts(
+                self as *const ClipHeader as *const u8,
+                std::mem::size_of_val(self),
+            )
+        }
+    }
+
+    pub fn as_bytes(&self) -> Vec<u8> {
+        Vec::new()
+    }
+}
+
+struct FrameHeader {
+    length: u32,
+    time_on: u32,
+    last_ffc_time: u32,
+    pixel_size: u8,
+}
+
+impl FrameHeader {
+    pub fn as_slice(&self) -> &[u8] {
+        unsafe {
+            std::slice::from_raw_parts(
+                self as *const FrameHeader as *const u8,
+                std::mem::size_of_val(self),
+            )
+        }
+    }
+}
+
+fn pack_frame(frames: &mut Vec<Vec<u8>>, frame: FrameData, meta: &CptvFrame) {
+    let frame_range = get_dynamic_range(&frame);
+    // We need to pack in a frame header, with a frame length,
+    // and whether this is 2 byte or 1 byte pixels.
+    let mut frame_header = FrameHeader {
+        length: 0,
+        pixel_size: 1,
+        time_on: meta.time_on,
+        last_ffc_time: meta.last_ffc_time,
+    };
+    let frame_header_len = frame_header.as_slice().len();
+
+    // NOTE(jon): We only want to do this if the values in the frame can all be represented as
+    //  i8s without any offsetting: offsetting other values that do have a dynamic range <= 255
+    //  would still skew our data away from having most of the delta values be around 0, and actually
+    //  hurts compressibility, since it varies the data more between frames.
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(frame_header.as_slice());
+    if frame_range.len() <= std::u8::MAX as usize
+        && *frame_range.start() >= std::i8::MIN as i16
+        && *frame_range.end() <= std::i8::MAX as i16
+    {
+        // Seems fair to say that most frames fit comfortably inside 8 bits.
+        for y in 0..frame.0.len() {
+            for x in 0..frame[0].len() {
+                bytes.push(frame[y][x] as i8 as u8);
+            }
+        }
+    } else {
+        frame_header.pixel_size = 2;
+        bytes.extend_from_slice(frame.as_slice());
+    }
+    frame_header.length = (bytes.len() - frame_header_len) as u32;
+    // Write the frame header back in at the start:
+    bytes[0..frame_header_len].copy_from_slice(frame_header.as_slice());
+    frames.push(bytes);
+}
+
 fn try_compression(cptv: &Cptv) {
     let mut frames_size = 0;
-    let i_frame_interval = 9 * 5;
+    let seconds_between_iframes = 5;
+    let i_frame_interval = 9 * seconds_between_iframes;
     let mut delta_frames = Vec::new();
+    let delta_fn = delta_compress_identity;
+    let iframe_fn = delta_compress_frame_snaking;
+    let mut num_iframes = 0;
     for (frame_index, frames) in cptv.frames.windows(2).enumerate() {
         let is_first_frame = frame_index == 0;
         let is_i_frame = frame_index % i_frame_interval == 0;
-        let frame_index = frame_index + 1;
 
         let frame_a = &frames[0];
         let frame_b = &frames[1];
 
         // Delta between frames, then in frame?
         if is_first_frame {
-            delta_frames.push(delta_compress_frame(&frame_a.image_data));
+            pack_frame(&mut delta_frames, iframe_fn(&frame_a.image_data), &frame_a);
+            num_iframes += 1;
         } else if is_i_frame {
-            delta_frames.push(delta_compress_frame(&frame_b.image_data));
+            pack_frame(&mut delta_frames, iframe_fn(&frame_b.image_data), &frame_b);
+            num_iframes += 1;
         } else {
             let mut d: FrameData = FrameData::empty();
             for y in 0..cptv.meta.height as usize {
@@ -407,57 +528,150 @@ fn try_compression(cptv: &Cptv) {
                     d[y][x] = frame_b.image_data[y][x] - frame_a.image_data[y][x];
                 }
             }
-            delta_frames.push(delta_compress_frame(&d));
+            pack_frame(&mut delta_frames, d, &frame_b);
         }
-        /*
-        let side = 4;
-        let mut y = 0;
-        let mut x = 0;
-        while y < cptv.meta.height as usize {
-            while x < cptv.meta.height as usize {
-                // Delta encode a 4x4 block in 2 passes:
-                for i in 0..side {
-                    let x = x + i;
-                    d[y + 0][x] = d[y + 0][x];
-                    d[y + 1][x] = d[y + 1][x] - d[y + 0][x];
-                    d[y + 2][x] = d[y + 2][x] - d[y + 1][x];
-                    d[y + 3][x] = d[y + 3][x] - d[y + 2][x];
-                }
-                x += side;
-            }
-            y += side;
-        }
-        let mut y = 0;
-        let mut x = 0;
-        while y < cptv.meta.height as usize {
-            while x < cptv.meta.height as usize {
-                // Delta encode a 4x4 block in 2 passes:
-                for i in 0..side {
-                    let y = y + i;
-                    d[y][x + 0] = d[y][x + 0];
-                    d[y][x + 1] = d[y][x + 1] - d[y][x + 0];
-                    d[y][x + 2] = d[y][x + 2] - d[y][x + 1];
-                    d[y][x + 3] = d[y][x + 3] - d[y][x + 2];
-                }
-                x += side;
-            }
-            y += side;
-        }
-        */
     }
-    // IDEA: Since we are only making it so you can go to the beginning of each iframe to start
+    let mut all_frames: Vec<u8> = Vec::new();
+    // TODO(jon): Write an uncompressed TOC here, with the offsets of all iframes in the compressed
+    //  stream.
+
+    // NOTE(jon): Since we are only making it so you can go to the beginning of each iframe to start
     //  decode, we should also make the subsequent frames up until the next iframe part of the zstd
     //  compression, for additional size reductions.
-    for (index, frame) in delta_frames.iter().enumerate() {
-        let compressed = zstd::encode_all(frame.as_slice(), 9);
-        if let Ok(compressed) = compressed {
-            frames_size += compressed.len();
-            println!("Zstd frame: {}", compressed.len());
+
+    let num_frames = delta_frames.len();
+    let mut first_in_range = 0;
+    for (frame_index, frame) in delta_frames.iter().enumerate() {
+        let is_i_frame = frame_index % i_frame_interval == 0;
+        let is_first_frame = frame_index == 0;
+        let is_last_frame = frame_index == num_frames - 1;
+        if (is_last_frame || is_i_frame) && !is_first_frame {
+            let compressed = zstd::encode_all(&all_frames[..], 14);
+            if let Ok(compressed) = compressed {
+                frames_size += compressed.len();
+                println!(
+                    "Zstd frame range {:?} frames, {:?}: {} bytes",
+                    (first_in_range..frame_index).len(),
+                    first_in_range..frame_index,
+                    compressed.len()
+                );
+                all_frames.extend_from_slice(&compressed);
+            }
+            all_frames.clear();
+            first_in_range = frame_index;
         }
     }
-    println!("All frames {}", frames_size);
+    println!("All frames Zstd: {}", frames_size);
+
+    {
+        // Basic gzip for comparison, probably not using best compression algorithm.
+        let mut frames_size = 0;
+        let num_frames = delta_frames.len();
+        let mut first_in_range = 0;
+        for (frame_index, frame) in delta_frames.iter().enumerate() {
+            let is_i_frame = frame_index % i_frame_interval == 0;
+            let is_first_frame = frame_index == 0;
+            let is_last_frame = frame_index == num_frames - 1;
+            if (is_last_frame || is_i_frame) && !is_first_frame {
+                let mut encoder = Encoder::new(Vec::new()).unwrap();
+                encoder.write_all(&all_frames[..]).unwrap();
+                let compressed = encoder.finish().into_result().unwrap();
+                frames_size += compressed.len();
+                println!(
+                    "Zlib frame range {:?} frames, {:?}: {} bytes",
+                    (first_in_range..frame_index).len(),
+                    first_in_range..frame_index,
+                    compressed.len()
+                );
+                first_in_range = frame_index;
+            }
+        }
+        println!("All frames Zlib {}", frames_size);
+    }
+
+    // NOTE(jon): Compressing all frame data in a contiguous block is actually larger than splitting
+    //  it at iframes.
+    /*
+    let mut frames_size = 0;
+    for (frame_index, frame) in delta_frames.iter().enumerate() {
+        let compressed = zstd::encode_all(frame.as_slice(), 14);
+        if let Ok(compressed) = compressed {
+            frames_size += compressed.len();
+            //println!("Zstd frame #{}: {}", frame_index, compressed.len());
+        }
+    }
+    println!("All frames individually compressed {}", frames_size);
+    */
 }
 
-fn delta_compress_frame(data: &FrameData) -> FrameData {
+fn delta_compress_identity(data: &FrameData) -> FrameData {
     data.clone()
 }
+
+// TODO(jon): Delta compress blocks of 4*4?
+//  - Maybe exploit the fact that we have smaller regions of variance in blocks as opposed to lines?
+//  - Sum the output of delta encoding between frames vs in-frame.
+//  - It *might* be worth reducing the number of input bytes if variance fits in 8 bits as opposed to 16.
+
+fn delta_compress_lines(data: &FrameData) -> FrameData {
+    let mut enc = FrameData::empty();
+    for y in 0..120 {
+        let mut prev = 0;
+        for x in 0..160 {
+            enc[y][x] = data[y][x] - prev;
+            prev = data[y][x];
+        }
+    }
+    // Verify delta encoding:
+    let mut dec = FrameData::empty();
+    for y in 0..120 {
+        let mut prev = 0;
+        for x in 0..160 {
+            dec[y][x] = enc[y][x] + prev;
+            prev = dec[y][x];
+        }
+    }
+    assert_eq!(data.as_slice(), dec.as_slice());
+    enc
+}
+
+fn delta_compress_frame_snaking(data: &FrameData) -> FrameData {
+    let mut enc = FrameData::empty();
+    let mut prev = 0;
+    for y in 0..120 {
+        let is_odd = y % 2 == 0;
+        if is_odd {
+            for x in 0..160 {
+                enc[y][x] = data[y][x] - prev;
+                prev = data[y][x];
+            }
+        } else {
+            for x in (0..160).rev() {
+                enc[y][x] = data[y][x] - prev;
+                prev = data[y][x];
+            }
+        }
+    }
+
+    // Verify delta encoding:
+    let mut dec = FrameData::empty();
+    let mut prev = 0;
+    for y in 0..120 {
+        let is_odd = y % 2 == 0;
+        if is_odd {
+            for x in 0..160 {
+                dec[y][x] = enc[y][x] + prev;
+                prev = dec[y][x];
+            }
+        } else {
+            for x in (0..160).rev() {
+                dec[y][x] = enc[y][x] + prev;
+                prev = dec[y][x];
+            }
+        }
+    }
+    assert_eq!(data.as_slice(), dec.as_slice());
+    enc
+}
+
+// TODO(jon): Decode again, and confirm that we're not missing anything.
