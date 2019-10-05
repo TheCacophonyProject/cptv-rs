@@ -1,3 +1,4 @@
+use byteorder::WriteBytesExt;
 use derivative::Derivative;
 use libflate::gzip::Encoder;
 use libflate::gzip::{Decoder, EncodeOptions};
@@ -405,7 +406,7 @@ fn dump_png_frames(cptv: &Cptv) {
 struct ClipHeader {
     magic_bytes: [u8; 4],
     version: u8,
-    timestamp: u64,
+    timestamp: u64, // At time of recording start?
     width: u32,
     height: u32,
     compression: u8, // None, zlib. zstd?
@@ -418,6 +419,10 @@ struct ClipHeader {
     loc_timestamp: Option<u64>,
     altitude: Option<f32>,
     accuracy: Option<f32>,
+
+    // Used to get dynamic range of clip for normalisation at runtime:
+    min_val: u16,
+    max_val: u16,
 }
 
 struct ClipToc {
@@ -462,27 +467,35 @@ impl FrameHeader {
 }
 
 fn pack_frame(frames: &mut Vec<Vec<u8>>, frame: FrameData, meta: &CptvFrame) {
+    // Work out whether this frame can be easily represented in i8 space, using one byte per pixel.
     let frame_range = get_dynamic_range(&frame);
-    // We need to pack in a frame header, with a frame length,
-    // and whether this is 2 byte or 1 byte pixels.
-    let mut frame_header = FrameHeader {
-        length: 0,
-        pixel_size: 1,
-        time_on: meta.time_on,
-        last_ffc_time: meta.last_ffc_time,
+    let pixel_bytes = if frame_range.len() <= std::u8::MAX as usize
+        && *frame_range.start() >= std::i8::MIN as i16
+        && *frame_range.end() <= std::i8::MAX as i16
+    {
+        1u8
+    } else {
+        2u8
     };
-    let frame_header_len = frame_header.as_slice().len();
 
     // NOTE(jon): We only want to do this if the values in the frame can all be represented as
     //  i8s without any offsetting: offsetting other values that do have a dynamic range <= 255
     //  would still skew our data away from having most of the delta values be around 0, and actually
     //  hurts compressibility, since it varies the data more between frames.
     let mut bytes = Vec::new();
-    bytes.extend_from_slice(frame_header.as_slice());
-    if frame_range.len() <= std::u8::MAX as usize
-        && *frame_range.start() >= std::i8::MIN as i16
-        && *frame_range.end() <= std::i8::MAX as i16
-    {
+
+    // Write the frame header
+    push_field(&mut bytes, &4u8, FieldType::FrameHeader);
+    push_field(
+        &mut bytes,
+        &(120 * 160 * pixel_bytes as u32),
+        FieldType::FrameSize,
+    );
+    // NOTE(jon): Frame size is technically redundant, as it will always be width * height * pixel_bytes
+    push_field(&mut bytes, &pixel_bytes, FieldType::PixelBytes);
+    push_field(&mut bytes, &meta.time_on, FieldType::TimeOn);
+    push_field(&mut bytes, &meta.last_ffc_time, FieldType::LastFfcTime);
+    if pixel_bytes == 1 {
         // Seems fair to say that most frames fit comfortably inside 8 bits.
         for y in 0..frame.0.len() {
             for x in 0..frame[0].len() {
@@ -490,13 +503,64 @@ fn pack_frame(frames: &mut Vec<Vec<u8>>, frame: FrameData, meta: &CptvFrame) {
             }
         }
     } else {
-        frame_header.pixel_size = 2;
         bytes.extend_from_slice(frame.as_slice());
     }
-    frame_header.length = (bytes.len() - frame_header_len) as u32;
-    // Write the frame header back in at the start:
-    bytes[0..frame_header_len].copy_from_slice(frame_header.as_slice());
     frames.push(bytes);
+}
+
+fn push_field<T: Sized>(output: &mut Vec<u8>, value: &T, code: FieldType) {
+    let size = std::mem::size_of_val(value);
+    output.push(code as u8);
+    output.push(size as u8);
+    output.extend_from_slice(unsafe {
+        std::slice::from_raw_parts(value as *const T as *const u8, size)
+    });
+}
+
+fn push_toc(output: &mut Vec<u8>, value: &[u32], code: FieldType) {
+    use byteorder::{LittleEndian, WriteBytesExt};
+    assert_eq!(code, FieldType::TableOfContents);
+    output.push(code as u8);
+    output
+        .write_u32::<LittleEndian>(value.len() as u32)
+        .unwrap();
+    for v in value {
+        output.write_u32::<LittleEndian>(*v).unwrap();
+    }
+}
+
+fn push_string(output: &mut Vec<u8>, value: &str, code: FieldType) {
+    output.push(code as u8);
+    output.push(value.len() as u8);
+    output.extend_from_slice(value.as_bytes());
+}
+
+#[repr(C)]
+#[derive(PartialEq, Debug)]
+enum FieldType {
+    Timestamp = b'T' as isize,
+    Width = b'X' as isize,
+    Height = b'Y' as isize,
+    Compression = b'C' as isize,
+    DeviceName = b'D' as isize,
+    MotionConfig = b'M' as isize,
+    PreviewSecs = b'P' as isize,
+    Latitude = b'L' as isize,
+    Longitude = b'O' as isize,
+    LocTimestamp = b'S' as isize,
+    Altitude = b'A' as isize,
+    Accuracy = b'U' as isize,
+    MinValue = b'V' as isize,
+    MaxValue = b'H' as isize,
+    TableOfContents = b'Q' as isize,
+    NumFrames = b'N' as isize,
+    FrameRate = b'R' as isize,
+    FramesPerIframe = b'I' as isize,
+    FrameHeader = b'F' as isize,
+    PixelBytes = b'w' as isize,
+    FrameSize = b'f' as isize,
+    LastFfcTime = b'c' as isize,
+    TimeOn = b't' as isize,
 }
 
 fn try_compression(cptv: &Cptv) {
@@ -507,6 +571,16 @@ fn try_compression(cptv: &Cptv) {
     let delta_fn = delta_compress_identity;
     let iframe_fn = delta_compress_frame_snaking;
     let mut num_iframes = 0;
+
+    // Dynamic range:
+    let mut min = std::i16::MAX;
+    let mut max = 0;
+
+    for frame in &cptv.frames {
+        let frame_range = get_dynamic_range(&frame.image_data);
+        min = i16::min(*frame_range.start(), min);
+        max = i16::max(*frame_range.end(), max);
+    }
     for (frame_index, frames) in cptv.frames.windows(2).enumerate() {
         let is_first_frame = frame_index == 0;
         let is_i_frame = frame_index % i_frame_interval == 0;
@@ -531,22 +605,22 @@ fn try_compression(cptv: &Cptv) {
             pack_frame(&mut delta_frames, d, &frame_b);
         }
     }
-    let mut all_frames: Vec<u8> = Vec::new();
-    // TODO(jon): Write an uncompressed TOC here, with the offsets of all iframes in the compressed
-    //  stream.
 
     // NOTE(jon): Since we are only making it so you can go to the beginning of each iframe to start
     //  decode, we should also make the subsequent frames up until the next iframe part of the zstd
     //  compression, for additional size reductions.
-
+    let mut compressed_data = Vec::new();
     let num_frames = delta_frames.len();
     let mut first_in_range = 0;
+    let mut intermediate_frame_buffer = Vec::new();
+    let mut iframe_offsets = Vec::new();
     for (frame_index, frame) in delta_frames.iter().enumerate() {
         let is_i_frame = frame_index % i_frame_interval == 0;
         let is_first_frame = frame_index == 0;
         let is_last_frame = frame_index == num_frames - 1;
+        intermediate_frame_buffer.extend_from_slice(frame);
         if (is_last_frame || is_i_frame) && !is_first_frame {
-            let compressed = zstd::encode_all(&all_frames[..], 14);
+            let compressed = zstd::encode_all(&intermediate_frame_buffer[..], 14);
             if let Ok(compressed) = compressed {
                 frames_size += compressed.len();
                 println!(
@@ -555,14 +629,71 @@ fn try_compression(cptv: &Cptv) {
                     first_in_range..frame_index,
                     compressed.len()
                 );
-                all_frames.extend_from_slice(&compressed);
+                iframe_offsets.push(compressed_data.len() as u32);
+                compressed_data.extend_from_slice(&compressed);
             }
-            all_frames.clear();
+            intermediate_frame_buffer.clear();
             first_in_range = frame_index;
         }
     }
-    println!("All frames Zstd: {}", frames_size);
 
+    let mut output: Vec<u8> = Vec::new();
+    // TODO(jon): Write an uncompressed TOC here, with the offsets of all iframes in the compressed
+    //  stream.
+
+    output.extend_from_slice(&b"CPTV"[..]);
+    output.push(3);
+    push_field(&mut output, &cptv.meta.timestamp, FieldType::Timestamp);
+    push_field(&mut output, &cptv.meta.width, FieldType::Width);
+    push_field(&mut output, &cptv.meta.height, FieldType::Height);
+    push_field(&mut output, &cptv.meta.compression, FieldType::Compression);
+    push_field(&mut output, &min, FieldType::MinValue);
+    push_field(&mut output, &max, FieldType::MaxValue);
+    push_field(
+        &mut output,
+        &(i_frame_interval as u8),
+        FieldType::FramesPerIframe,
+    );
+    push_field(&mut output, &9u8, FieldType::FrameRate);
+    push_field(
+        &mut output,
+        &(cptv.frames.len() as u32),
+        FieldType::NumFrames,
+    );
+
+    push_string(&mut output, &cptv.meta.device_name, FieldType::DeviceName);
+
+    if let Some(motion_config) = &cptv.meta.motion_config {
+        push_string(&mut output, motion_config, FieldType::MotionConfig);
+    }
+    if let Some(preview_secs) = &cptv.meta.preview_secs {
+        push_field(&mut output, preview_secs, FieldType::PreviewSecs);
+    }
+    if let Some(latitude) = &cptv.meta.latitude {
+        push_field(&mut output, latitude, FieldType::Latitude);
+    }
+    if let Some(longitude) = &cptv.meta.longitude {
+        push_field(&mut output, longitude, FieldType::Longitude);
+    }
+    if let Some(loc_timestamp) = &cptv.meta.loc_timestamp {
+        push_field(&mut output, loc_timestamp, FieldType::LocTimestamp);
+    }
+    if let Some(altitude) = &cptv.meta.altitude {
+        push_field(&mut output, altitude, FieldType::Altitude);
+    }
+    if let Some(accuracy) = &cptv.meta.accuracy {
+        push_field(&mut output, accuracy, FieldType::Accuracy);
+    }
+
+    // Length will be num_iframes * sizeof u32, and will have offsets into the compressed stream of
+    // where each iframe begins, from the start of the file, or maybe from the end of the TOC, which
+    // should be the last section.  This means we can rewrite header metadata without rewriting TOC.
+    println!("Iframe offsets, {:?}", iframe_offsets);
+    push_toc(&mut output, &iframe_offsets, FieldType::TableOfContents);
+    output.extend_from_slice(&compressed_data);
+    println!("All frames Zstd: {}", output.len());
+
+    /*
     {
         // Basic gzip for comparison, probably not using best compression algorithm.
         let mut frames_size = 0;
@@ -574,7 +705,7 @@ fn try_compression(cptv: &Cptv) {
             let is_last_frame = frame_index == num_frames - 1;
             if (is_last_frame || is_i_frame) && !is_first_frame {
                 let mut encoder = Encoder::new(Vec::new()).unwrap();
-                encoder.write_all(&all_frames[..]).unwrap();
+                encoder.write_all(&output[..]).unwrap();
                 let compressed = encoder.finish().into_result().unwrap();
                 frames_size += compressed.len();
                 println!(
@@ -588,6 +719,7 @@ fn try_compression(cptv: &Cptv) {
         }
         println!("All frames Zlib {}", frames_size);
     }
+    */
 
     // NOTE(jon): Compressing all frame data in a contiguous block is actually larger than splitting
     //  it at iframes.
