@@ -1,0 +1,27 @@
+[package]
+name = "cptv_player"
+version = "0.1.0"
+authors = ["jon hardie <jon@hardiesoft.com>"]
+edition = "2018"
+
+[lib]
+crate-type = ["cdylib"]
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+# This generates javascript functions of wasm functions, so we can
+# call into wasm code from JS.
+wasm-bindgen = "0.2.50"
+
+# This is the allocator that wasm requires to work with rust.
+wee_alloc = "0.4.5"
+
+# Routing messages to the JS error console
+console_log = "0.1.2"
+log = "0.4.8"
+console_error_panic_hook = "0.1.6"
+
+# Teach rust about JS types (Float32Array)
+js-sys = "0.3.27"
+
+zstd-rs = { git = "https://github.com/KillingSpark/zstd-rs.git" }

@@ -692,7 +692,8 @@ fn try_compression(cptv: &Cptv) {
     push_toc(&mut output, &iframe_offsets, FieldType::TableOfContents);
     output.extend_from_slice(&compressed_data);
     println!("All frames Zstd: {}", output.len());
-
+    let mut file = File::create("output.cptv").unwrap();
+    file.write_all(&output).unwrap();
     /*
     {
         // Basic gzip for comparison, probably not using best compression algorithm.
