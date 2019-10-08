@@ -2,8 +2,11 @@ use js_sys::Uint8Array;
 use log::Level;
 use wasm_bindgen::prelude::*;
 
+use crate::decoder::decode_cptv3;
 #[allow(unused)]
 use log::{info, trace, warn};
+
+mod decoder;
 
 // The global allocator used by wasm code
 #[global_allocator]
@@ -22,6 +25,7 @@ pub fn init_with_cptv_data(buffer: Uint8Array) -> Result<(), JsValue> {
     buffer.copy_to(&mut input);
     info!("Input len {}", input.len());
 
+    let frames = decode_cptv3(&input);
     // Now decode and play frames!
 
     /*

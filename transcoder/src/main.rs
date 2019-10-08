@@ -1,5 +1,6 @@
 use byteorder::WriteBytesExt;
-use derivative::Derivative;
+use cptv_common::{Cptv, CptvFrame, CptvHeader, FieldType, FrameData};
+
 use libflate::gzip::Encoder;
 use libflate::gzip::{Decoder, EncodeOptions};
 use libflate::lz77::DefaultLz77Encoder;
@@ -40,77 +41,6 @@ fn main() -> std::result::Result<(), std::boxed::Box<dyn std::error::Error>> {
             println!("{}", message);
             Ok(())
         }
-    }
-}
-
-#[derive(Debug)]
-struct CptvHeader {
-    timestamp: u64,
-    width: u32,
-    height: u32,
-    compression: u8,
-    device_name: String,
-
-    motion_config: Option<String>,
-    preview_secs: Option<u8>,
-    latitude: Option<f32>,
-    longitude: Option<f32>,
-    loc_timestamp: Option<u64>,
-    altitude: Option<f32>,
-    accuracy: Option<f32>,
-}
-
-#[derive(Clone, Copy)]
-struct FrameData([[i16; 160]; 120]);
-
-impl FrameData {
-    pub fn empty() -> FrameData {
-        FrameData([[0i16; 160]; 120])
-    }
-
-    pub fn as_slice(&self) -> &[u8] {
-        unsafe {
-            std::slice::from_raw_parts(
-                &self[0] as *const i16 as *const u8,
-                std::mem::size_of_val(self),
-            )
-        }
-    }
-}
-
-impl Index<usize> for FrameData {
-    type Output = [i16; 160];
-
-    fn index(&self, index: usize) -> &Self::Output {
-        &self.0[index]
-    }
-}
-
-impl IndexMut<usize> for FrameData {
-    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        &mut self.0[index]
-    }
-}
-
-#[derive(Derivative)]
-#[derivative(Debug)]
-struct CptvFrame {
-    time_on: u32,
-    bit_width: u8,
-    frame_size: u32,
-    last_ffc_time: u32,
-    #[derivative(Debug = "ignore")]
-    image_data: FrameData,
-}
-
-struct Cptv {
-    meta: CptvHeader,
-    frames: Vec<CptvFrame>,
-}
-
-impl fmt::Debug for Cptv {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        write!(f, "CPTV file with {} frames", self.frames.len())
     }
 }
 
@@ -355,8 +285,8 @@ fn decode_cptv(i: &[u8]) -> nom::IResult<&[u8], Cptv> {
 fn get_dynamic_range(frame: &FrameData) -> RangeInclusive<i16> {
     let mut frame_max = 0;
     let mut frame_min = std::i16::MAX;
-    for y in 0..frame.0.len() as usize {
-        for x in 0..frame[0].len() as usize {
+    for y in 0..frame.height() as usize {
+        for x in 0..frame.width() as usize {
             let val = frame[y][x];
             frame_max = i16::max(val, frame_max);
             frame_min = i16::min(val, frame_min);
@@ -402,70 +332,6 @@ fn dump_png_frames(cptv: &Cptv) {
     }
 }
 
-// Need to serialise this:
-struct ClipHeader {
-    magic_bytes: [u8; 4],
-    version: u8,
-    timestamp: u64, // At time of recording start?
-    width: u32,
-    height: u32,
-    compression: u8, // None, zlib. zstd?
-    device_name: String,
-
-    motion_config: Option<String>,
-    preview_secs: Option<u8>,
-    latitude: Option<f32>,
-    longitude: Option<f32>,
-    loc_timestamp: Option<u64>,
-    altitude: Option<f32>,
-    accuracy: Option<f32>,
-
-    // Used to get dynamic range of clip for normalisation at runtime:
-    min_val: u16,
-    max_val: u16,
-}
-
-struct ClipToc {
-    num_frames: u32,
-    frames_per_iframe: u32,
-    fps: u8,
-    length: u32,
-    // length x u32 offsets into the compressed stream.
-}
-
-impl ClipHeader {
-    pub fn as_slice(&self) -> &[u8] {
-        unsafe {
-            std::slice::from_raw_parts(
-                self as *const ClipHeader as *const u8,
-                std::mem::size_of_val(self),
-            )
-        }
-    }
-
-    pub fn as_bytes(&self) -> Vec<u8> {
-        Vec::new()
-    }
-}
-
-struct FrameHeader {
-    length: u32,
-    time_on: u32,
-    last_ffc_time: u32,
-    pixel_size: u8,
-}
-
-impl FrameHeader {
-    pub fn as_slice(&self) -> &[u8] {
-        unsafe {
-            std::slice::from_raw_parts(
-                self as *const FrameHeader as *const u8,
-                std::mem::size_of_val(self),
-            )
-        }
-    }
-}
-
 fn pack_frame(frames: &mut Vec<Vec<u8>>, frame: FrameData, meta: &CptvFrame) {
     // Work out whether this frame can be easily represented in i8 space, using one byte per pixel.
     let frame_range = get_dynamic_range(&frame);
@@ -497,8 +363,8 @@ fn pack_frame(frames: &mut Vec<Vec<u8>>, frame: FrameData, meta: &CptvFrame) {
     push_field(&mut bytes, &meta.last_ffc_time, FieldType::LastFfcTime);
     if pixel_bytes == 1 {
         // Seems fair to say that most frames fit comfortably inside 8 bits.
-        for y in 0..frame.0.len() {
-            for x in 0..frame[0].len() {
+        for y in 0..frame.height() {
+            for x in 0..frame.width() {
                 bytes.push(frame[y][x] as i8 as u8);
             }
         }
@@ -518,7 +384,7 @@ fn push_field<T: Sized>(output: &mut Vec<u8>, value: &T, code: FieldType) {
 }
 
 fn push_toc(output: &mut Vec<u8>, value: &[u32], code: FieldType) {
-    use byteorder::{LittleEndian, WriteBytesExt};
+    use byteorder::LittleEndian;
     assert_eq!(code, FieldType::TableOfContents);
     output.push(code as u8);
     output
@@ -533,34 +399,6 @@ fn push_string(output: &mut Vec<u8>, value: &str, code: FieldType) {
     output.push(code as u8);
     output.push(value.len() as u8);
     output.extend_from_slice(value.as_bytes());
-}
-
-#[repr(C)]
-#[derive(PartialEq, Debug)]
-enum FieldType {
-    Timestamp = b'T' as isize,
-    Width = b'X' as isize,
-    Height = b'Y' as isize,
-    Compression = b'C' as isize,
-    DeviceName = b'D' as isize,
-    MotionConfig = b'M' as isize,
-    PreviewSecs = b'P' as isize,
-    Latitude = b'L' as isize,
-    Longitude = b'O' as isize,
-    LocTimestamp = b'S' as isize,
-    Altitude = b'A' as isize,
-    Accuracy = b'U' as isize,
-    MinValue = b'V' as isize,
-    MaxValue = b'H' as isize,
-    TableOfContents = b'Q' as isize,
-    NumFrames = b'N' as isize,
-    FrameRate = b'R' as isize,
-    FramesPerIframe = b'I' as isize,
-    FrameHeader = b'F' as isize,
-    PixelBytes = b'w' as isize,
-    FrameSize = b'f' as isize,
-    LastFfcTime = b'c' as isize,
-    TimeOn = b't' as isize,
 }
 
 fn try_compression(cptv: &Cptv) {

@@ -3,4 +3,5 @@
 members = [
 	"transcoder",
 	"cptv_player",
+	"cptv_common"
 ]

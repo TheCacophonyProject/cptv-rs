@@ -1,0 +1,9 @@
+[package]
+name = "cptv_common"
+version = "0.1.0"
+authors = ["jon hardie <jon@hardiesoft.com>"]
+edition = "2018"
+
+
+[dependencies]
+derivative = "1.0.3"
