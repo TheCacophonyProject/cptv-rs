@@ -75,4 +75,23 @@ fn decode_header(i: &[u8]) -> nom::IResult<&[u8], CptvHeader> {
     Ok((outer, meta))
 }
 
-pub fn decode_cptv3(input: &Vec<u8>) -> Cptv {}
+pub fn decode_cptv3(input: &Vec<u8>) -> Cptv {
+    let header = decode_header(&input);
+    Cptv {
+        frames: Vec::new(),
+        meta: CptvHeader {
+            timestamp: 0,
+            width: 0,
+            height: 0,
+            compression: 0,
+            device_name: "".to_string(),
+            motion_config: None,
+            preview_secs: None,
+            latitude: None,
+            longitude: None,
+            loc_timestamp: None,
+            altitude: None,
+            accuracy: None,
+        },
+    }
+}
