@@ -376,7 +376,7 @@ fn pack_frame(frames: &mut Vec<Vec<u8>>, frame: FrameData, meta: &CptvFrame) {
 
 fn push_field<T: Sized>(output: &mut Vec<u8>, value: &T, code: FieldType) -> usize {
     let size = std::mem::size_of_val(value);
-    println!("adding field {:?} at {}", code, output.len());
+    //println!("adding field {:?} at {}", code, output.len());
     output.push(code as u8);
     output.push(size as u8);
     let value_offset = output.len();
@@ -410,7 +410,7 @@ fn try_compression(cptv: &Cptv2) {
     let i_frame_interval = 9 * seconds_between_iframes;
     let mut delta_frames = Vec::new();
     let delta_fn = delta_compress_identity;
-    let iframe_fn = delta_compress_frame_snaking;
+    let iframe_fn = delta_compress_identity; //delta_compress_frame_snaking;
     let mut num_iframes = 0;
 
     // Dynamic range:

@@ -17,26 +17,40 @@
 </head>
 <body>
 <div id="drop">
-  <p style="color: white;margin: 0;height: 500px;padding-top: 30px;text-align: center;font-family: sans-serif;font-size: 20px;">Drop a file to play</p>
-  <canvas id="canvas" width="500" height="300"></canvas>
+  <p style="color: white;margin: 0;height: 200px;padding-top: 30px;text-align: center;font-family: sans-serif;font-size: 20px;">Drop a file to play</p>
+  <canvas id="canvas" width="500" height="300" style="text-align: center"></canvas>
 </div>
 <script type="module">
   import * as cptvPlayer from './pkg/cptv_player.js';
   const canvas = document.getElementById("canvas");
-  cptvPlayer.default().then(async (_wasm) => {
+  const context = canvas.getContext('2d');
+  let frame;
+  let width = 0;
+  let height = 0;
 
+  function drawFrame() {
+    cptvPlayer.get_frame(0, frame.data);
+    context.putImageData(frame, 0, 0);
+    requestAnimationFrame(drawFrame);
+  }
+
+  cptvPlayer.default().then(async (_wasm) => {
     const dropZone = document.getElementById('drop');
     // Setup drop zone
-    dropZone.addEventListener('drop', (event) => {
+    dropZone.addEventListener('drop', async (event) => {
       event.preventDefault();
-
       if (event.dataTransfer.items) {
         for (let i = 0; i < event.dataTransfer.items.length; i++) {
           if (event.dataTransfer.items[i].kind === 'file') {
             let file = event.dataTransfer.items[i].getAsFile();
-            file.arrayBuffer().then((buffer) => {
-              cptvPlayer.init_with_cptv_data(new Uint8Array(buffer));
-            });
+            let buffer = await file.arrayBuffer();
+            cptvPlayer.init_with_cptv_data(new Uint8Array(buffer));
+            width = cptvPlayer.get_width();
+            height = cptvPlayer.get_height();
+            canvas.width = width;
+            canvas.height = height;
+            frame = context.getImageData(0, 0, width, height);
+            requestAnimationFrame(drawFrame)
           }
         }
       }

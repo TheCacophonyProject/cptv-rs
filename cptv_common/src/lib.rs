@@ -31,6 +31,33 @@ pub struct Cptv3Header {
     pub frames_per_iframe: u8,
 }
 
+impl Cptv3Header {
+    pub fn new() -> Cptv3Header {
+        Cptv3Header {
+            v2: Cptv2Header {
+                timestamp: 0,
+                width: 0,
+                height: 0,
+                compression: 0,
+                device_name: "".to_string(),
+                motion_config: None,
+                preview_secs: None,
+                latitude: None,
+                longitude: None,
+                loc_timestamp: None,
+                altitude: None,
+                accuracy: None,
+            },
+            min_value: 0,
+            max_value: 0,
+            toc: Vec::new(),
+            num_frames: 0,
+            frame_rate: 0,
+            frames_per_iframe: 0,
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 pub struct FrameData([[i16; 160]; 120]);
 
@@ -72,7 +99,7 @@ impl IndexMut<usize> for FrameData {
 }
 
 #[derive(Derivative)]
-#[derivative(Debug)]
+#[derivative(Debug, Copy, Clone)]
 pub struct CptvFrame {
     pub time_on: u32,
     pub bit_width: u8,
@@ -80,6 +107,18 @@ pub struct CptvFrame {
     pub last_ffc_time: u32,
     #[derivative(Debug = "ignore")]
     pub image_data: FrameData,
+}
+
+impl CptvFrame {
+    pub fn new() -> CptvFrame {
+        CptvFrame {
+            time_on: 0,
+            bit_width: 0,
+            frame_size: 0,
+            last_ffc_time: 0,
+            image_data: FrameData::empty(),
+        }
+    }
 }
 
 pub struct Cptv2 {
