@@ -1,5 +1,5 @@
 use byteorder::WriteBytesExt;
-use cptv_common::{Cptv, CptvFrame, CptvHeader, FieldType, FrameData};
+use cptv_common::{Cptv2, Cptv2Header, CptvFrame, FieldType, FrameData};
 
 use libflate::gzip::Encoder;
 use libflate::gzip::{Decoder, EncodeOptions};
@@ -44,8 +44,8 @@ fn main() -> std::result::Result<(), std::boxed::Box<dyn std::error::Error>> {
     }
 }
 
-fn decode_header(i: &[u8]) -> nom::IResult<&[u8], CptvHeader> {
-    let mut meta = CptvHeader {
+fn decode_header(i: &[u8]) -> nom::IResult<&[u8], Cptv2Header> {
+    let mut meta = Cptv2Header {
         timestamp: 0,
         width: 0,
         height: 0,
@@ -274,12 +274,12 @@ fn decode_frames(i: &[u8], width: u32, height: u32) -> nom::IResult<&[u8], Vec<C
     Ok((i, frames))
 }
 
-fn decode_cptv(i: &[u8]) -> nom::IResult<&[u8], Cptv> {
+fn decode_cptv(i: &[u8]) -> nom::IResult<&[u8], Cptv2> {
     // For reading and opening files
     let (i, meta) = decode_header(i)?;
     let (i, frames) = decode_frames(i, meta.width, meta.height)?;
     assert_eq!(i.len(), 0);
-    Ok((i, Cptv { frames, meta }))
+    Ok((i, Cptv2 { frames, meta }))
 }
 
 fn get_dynamic_range(frame: &FrameData) -> RangeInclusive<i16> {
@@ -295,7 +295,7 @@ fn get_dynamic_range(frame: &FrameData) -> RangeInclusive<i16> {
     frame_min..=frame_max
 }
 
-fn dump_png_frames(cptv: &Cptv) {
+fn dump_png_frames(cptv: &Cptv2) {
     // Work out the dynamic range to scale here:
     let mut min = std::i16::MAX;
     let mut max = 0;
@@ -374,13 +374,16 @@ fn pack_frame(frames: &mut Vec<Vec<u8>>, frame: FrameData, meta: &CptvFrame) {
     frames.push(bytes);
 }
 
-fn push_field<T: Sized>(output: &mut Vec<u8>, value: &T, code: FieldType) {
+fn push_field<T: Sized>(output: &mut Vec<u8>, value: &T, code: FieldType) -> usize {
     let size = std::mem::size_of_val(value);
+    println!("adding field {:?} at {}", code, output.len());
     output.push(code as u8);
     output.push(size as u8);
+    let value_offset = output.len();
     output.extend_from_slice(unsafe {
         std::slice::from_raw_parts(value as *const T as *const u8, size)
     });
+    value_offset
 }
 
 fn push_toc(output: &mut Vec<u8>, value: &[u32], code: FieldType) {
@@ -401,7 +404,7 @@ fn push_string(output: &mut Vec<u8>, value: &str, code: FieldType) {
     output.extend_from_slice(value.as_bytes());
 }
 
-fn try_compression(cptv: &Cptv) {
+fn try_compression(cptv: &Cptv2) {
     let mut frames_size = 0;
     let seconds_between_iframes = 5;
     let i_frame_interval = 9 * seconds_between_iframes;
@@ -481,47 +484,53 @@ fn try_compression(cptv: &Cptv) {
 
     output.extend_from_slice(&b"CPTV"[..]);
     output.push(3);
+    let mut num_fields = 0;
+    let num_fields_offset = push_field(&mut output, &num_fields, FieldType::Header);
     push_field(&mut output, &cptv.meta.timestamp, FieldType::Timestamp);
     push_field(&mut output, &cptv.meta.width, FieldType::Width);
     push_field(&mut output, &cptv.meta.height, FieldType::Height);
     push_field(&mut output, &cptv.meta.compression, FieldType::Compression);
     push_field(&mut output, &min, FieldType::MinValue);
     push_field(&mut output, &max, FieldType::MaxValue);
-    push_field(
-        &mut output,
-        &(i_frame_interval as u8),
-        FieldType::FramesPerIframe,
-    );
+    let frames_per_iframe = i_frame_interval as u8;
+    push_field(&mut output, &frames_per_iframe, FieldType::FramesPerIframe);
     push_field(&mut output, &9u8, FieldType::FrameRate);
-    push_field(
-        &mut output,
-        &(cptv.frames.len() as u32),
-        FieldType::NumFrames,
-    );
+    let num_frames = cptv.frames.len() as u32;
+    push_field(&mut output, &num_frames, FieldType::NumFrames);
 
     push_string(&mut output, &cptv.meta.device_name, FieldType::DeviceName);
+    num_fields += 10;
 
     if let Some(motion_config) = &cptv.meta.motion_config {
         push_string(&mut output, motion_config, FieldType::MotionConfig);
+        num_fields += 1;
     }
     if let Some(preview_secs) = &cptv.meta.preview_secs {
         push_field(&mut output, preview_secs, FieldType::PreviewSecs);
+        num_fields += 1;
     }
     if let Some(latitude) = &cptv.meta.latitude {
         push_field(&mut output, latitude, FieldType::Latitude);
+        num_fields += 1;
     }
     if let Some(longitude) = &cptv.meta.longitude {
         push_field(&mut output, longitude, FieldType::Longitude);
+        num_fields += 1;
     }
     if let Some(loc_timestamp) = &cptv.meta.loc_timestamp {
         push_field(&mut output, loc_timestamp, FieldType::LocTimestamp);
+        num_fields += 1;
     }
     if let Some(altitude) = &cptv.meta.altitude {
         push_field(&mut output, altitude, FieldType::Altitude);
+        num_fields += 1;
     }
     if let Some(accuracy) = &cptv.meta.accuracy {
         push_field(&mut output, accuracy, FieldType::Accuracy);
+        num_fields += 1;
     }
+    println!("Output {} fields", num_fields);
+    output[num_fields_offset] = num_fields;
 
     // Length will be num_iframes * sizeof u32, and will have offsets into the compressed stream of
     // where each iframe begins, from the start of the file, or maybe from the end of the TOC, which

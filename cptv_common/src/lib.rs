@@ -4,7 +4,7 @@ use std::fmt::{Error, Formatter};
 use std::ops::{Index, IndexMut};
 
 #[derive(Debug)]
-pub struct CptvHeader {
+pub struct Cptv2Header {
     pub timestamp: u64,
     pub width: u32,
     pub height: u32,
@@ -18,6 +18,17 @@ pub struct CptvHeader {
     pub loc_timestamp: Option<u64>,
     pub altitude: Option<f32>,
     pub accuracy: Option<f32>,
+}
+
+#[derive(Debug)]
+pub struct Cptv3Header {
+    pub v2: Cptv2Header,
+    pub min_value: u16,
+    pub max_value: u16,
+    pub toc: Vec<u32>,
+    pub num_frames: u32,
+    pub frame_rate: u8,
+    pub frames_per_iframe: u8,
 }
 
 #[derive(Clone, Copy)]
@@ -71,12 +82,17 @@ pub struct CptvFrame {
     pub image_data: FrameData,
 }
 
-pub struct Cptv {
-    pub meta: CptvHeader,
+pub struct Cptv2 {
+    pub meta: Cptv2Header,
     pub frames: Vec<CptvFrame>,
 }
 
-impl fmt::Debug for Cptv {
+pub struct Cptv3 {
+    pub meta: Cptv3Header,
+    pub frames: Vec<CptvFrame>,
+}
+
+impl fmt::Debug for Cptv2 {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         write!(f, "CPTV file with {} frames", self.frames.len())
     }
@@ -100,32 +116,69 @@ impl FrameHeader {
     }
 }
 
-#[repr(C)]
+#[repr(u8)]
 #[derive(PartialEq, Debug)]
 pub enum FieldType {
-    Timestamp = b'T' as isize,
-    Width = b'X' as isize,
-    Height = b'Y' as isize,
-    Compression = b'C' as isize,
-    DeviceName = b'D' as isize,
-    MotionConfig = b'M' as isize,
-    PreviewSecs = b'P' as isize,
-    Latitude = b'L' as isize,
-    Longitude = b'O' as isize,
-    LocTimestamp = b'S' as isize,
-    Altitude = b'A' as isize,
-    Accuracy = b'U' as isize,
-    MinValue = b'V' as isize,
-    MaxValue = b'H' as isize,
-    TableOfContents = b'Q' as isize,
-    NumFrames = b'N' as isize,
-    FrameRate = b'R' as isize,
-    FramesPerIframe = b'I' as isize,
-    FrameHeader = b'F' as isize,
-    PixelBytes = b'w' as isize,
-    FrameSize = b'f' as isize,
-    LastFfcTime = b'c' as isize,
-    TimeOn = b't' as isize,
+    Header = b'H',
+    Timestamp = b'T',
+    Width = b'X',
+    Height = b'Y',
+    Compression = b'C',
+    DeviceName = b'D',
+    MotionConfig = b'M',
+    PreviewSecs = b'P',
+    Latitude = b'L',
+    Longitude = b'O',
+    LocTimestamp = b'S',
+    Altitude = b'A',
+    Accuracy = b'U',
+
+    MinValue = b'V',
+    MaxValue = b'W',
+    TableOfContents = b'Q',
+    NumFrames = b'N',
+    FrameRate = b'R',
+    FramesPerIframe = b'I',
+    FrameHeader = b'F',
+
+    PixelBytes = b'w',
+    FrameSize = b'f',
+    LastFfcTime = b'c',
+    TimeOn = b't',
+    Unknown = b';',
+}
+
+impl From<u8> for FieldType {
+    fn from(val: u8) -> Self {
+        use FieldType::*;
+        match val {
+            b'H' => Header,
+            b'T' => Timestamp,
+            b'X' => Width,
+            b'Y' => Height,
+            b'C' => Compression,
+            b'D' => DeviceName,
+            b'M' => MotionConfig,
+            b'P' => PreviewSecs,
+            b'L' => Latitude,
+            b'O' => Longitude,
+            b'S' => LocTimestamp,
+            b'A' => Altitude,
+            b'U' => Accuracy,
+            b'V' => MinValue,
+            b'W' => MaxValue,
+            b'Q' => TableOfContents,
+            b'N' => NumFrames,
+            b'R' => FrameRate,
+            b'I' => FramesPerIframe,
+            b'F' => FrameHeader,
+            b'w' => PixelBytes,
+            b'f' => FrameSize,
+            b'c' => LastFfcTime,
+            b't' => TimeOn,
+            _ => Unknown,
+        }
+    }
 }
 
 /// Unused

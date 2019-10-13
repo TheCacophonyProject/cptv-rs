@@ -22,9 +22,21 @@
       <sourceFolder url="file://$MODULE_DIR$/cptv_common\examples" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/cptv_common\tests" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/cptv_common\benches" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/transcoder/examples" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/transcoder/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/transcoder/benches" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/cptv_player/examples" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/cptv_player/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/cptv_player/benches" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/cptv_common/examples" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/cptv_common/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/cptv_common/benches" isTestSource="true" />
+      <excludeFolder url="file://$MODULE_DIR$/cptv_common/target" />
       <excludeFolder url="file://$MODULE_DIR$/cptv_common\target" />
+      <excludeFolder url="file://$MODULE_DIR$/cptv_player/target" />
       <excludeFolder url="file://$MODULE_DIR$/cptv_player\target" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
+      <excludeFolder url="file://$MODULE_DIR$/transcoder/target" />
       <excludeFolder url="file://$MODULE_DIR$/transcoder\target" />
     </content>
     <orderEntry type="inheritedJdk" />
