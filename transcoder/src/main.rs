@@ -332,7 +332,7 @@ fn dump_png_frames(cptv: &Cptv2) {
     }
 }
 
-fn pack_frame(frames: &mut Vec<Vec<u8>>, frame: FrameData, meta: &CptvFrame) {
+fn pack_frame(frames: &mut Vec<Vec<u8>>, frame: FrameData, meta: &CptvFrame, is_iframe: bool) {
     // Work out whether this frame can be easily represented in i8 space, using one byte per pixel.
     let frame_range = get_dynamic_range(&frame);
     let pixel_bytes = if frame_range.len() <= std::u8::MAX as usize
@@ -365,7 +365,11 @@ fn pack_frame(frames: &mut Vec<Vec<u8>>, frame: FrameData, meta: &CptvFrame) {
         // Seems fair to say that most frames fit comfortably inside 8 bits.
         for y in 0..frame.height() {
             for x in 0..frame.width() {
-                bytes.push(frame[y][x] as i8 as u8);
+                unsafe {
+                    let val = frame[y][x] as i8;
+                    let val = std::mem::transmute_copy::<i8, u8>(&val);
+                    bytes.push(val);
+                }
             }
         }
     } else {
@@ -410,7 +414,7 @@ fn try_compression(cptv: &Cptv2) {
     let i_frame_interval = 9 * seconds_between_iframes;
     let mut delta_frames = Vec::new();
     let delta_fn = delta_compress_identity;
-    let iframe_fn = delta_compress_identity; //delta_compress_frame_snaking;
+    let iframe_fn = delta_compress_frame_snaking;
     let mut num_iframes = 0;
 
     // Dynamic range:
@@ -431,19 +435,30 @@ fn try_compression(cptv: &Cptv2) {
 
         // Delta between frames, then in frame?
         if is_first_frame {
-            pack_frame(&mut delta_frames, iframe_fn(&frame_a.image_data), &frame_a);
+            pack_frame(
+                &mut delta_frames,
+                iframe_fn(&frame_a.image_data),
+                &frame_a,
+                true,
+            );
             num_iframes += 1;
         } else if is_i_frame {
-            pack_frame(&mut delta_frames, iframe_fn(&frame_b.image_data), &frame_b);
+            pack_frame(
+                &mut delta_frames,
+                iframe_fn(&frame_b.image_data),
+                &frame_b,
+                true,
+            );
             num_iframes += 1;
         } else {
+            //pack_frame(&mut delta_frames, iframe_fn(&frame_b.image_data), &frame_b);
             let mut d: FrameData = FrameData::empty();
             for y in 0..cptv.meta.height as usize {
                 for x in 0..cptv.meta.width as usize {
                     d[y][x] = frame_b.image_data[y][x] - frame_a.image_data[y][x];
                 }
             }
-            pack_frame(&mut delta_frames, d, &frame_b);
+            pack_frame(&mut delta_frames, d, &frame_b, false);
         }
     }
 
@@ -457,9 +472,9 @@ fn try_compression(cptv: &Cptv2) {
     let mut iframe_offsets = Vec::new();
     for (frame_index, frame) in delta_frames.iter().enumerate() {
         let is_i_frame = frame_index % i_frame_interval == 0;
+
         let is_first_frame = frame_index == 0;
         let is_last_frame = frame_index == num_frames - 1;
-        intermediate_frame_buffer.extend_from_slice(frame);
         if (is_last_frame || is_i_frame) && !is_first_frame {
             let compressed = zstd::encode_all(&intermediate_frame_buffer[..], 14);
             if let Ok(compressed) = compressed {
@@ -476,6 +491,7 @@ fn try_compression(cptv: &Cptv2) {
             intermediate_frame_buffer.clear();
             first_in_range = frame_index;
         }
+        intermediate_frame_buffer.extend_from_slice(frame);
     }
 
     let mut output: Vec<u8> = Vec::new();

@@ -1,7 +1,7 @@
 use cptv_common::{Cptv2Header, Cptv3, Cptv3Header, CptvFrame, FieldType, FrameData};
 use log::{info, trace, warn};
 use nom::bytes::complete::{tag, take};
-use nom::number::complete::{le_f32, le_i16, le_u16, le_u32, le_u64, le_u8};
+use nom::number::complete::{le_f32, le_i16, le_i8, le_u16, le_u32, le_u64, le_u8};
 use FieldType::*;
 
 pub fn decode_cptv3_header(i: &[u8]) -> nom::IResult<&[u8], Cptv3Header> {
@@ -138,10 +138,11 @@ pub fn decode_frame<'a>(
 fn copy_frame_data<'a>(data: &'a [u8], frame: &mut CptvFrame) -> nom::IResult<&'a [u8], ()> {
     let mut data = data;
     if frame.bit_width == 1 {
-        let mut i = 0;
         for y in 0..frame.image_data.height() {
             for x in 0..frame.image_data.width() {
-                frame.image_data[y][x] = data[0] as i8 as i16;
+                let (remaining, val) = le_i8(data)?;
+                data = remaining;
+                frame.image_data[y][x] = val as i16;
             }
         }
     } else if frame.bit_width == 2 {
@@ -158,11 +159,27 @@ fn copy_frame_data<'a>(data: &'a [u8], frame: &mut CptvFrame) -> nom::IResult<&'
 
 fn unpack_frame(prev_frame: &CptvFrame, frame: &mut CptvFrame, is_iframe: bool) {
     if is_iframe {
-        // Decode snaking.
-    }
-    for y in 0..prev_frame.image_data.height() {
-        for x in 0..prev_frame.image_data.width() {
-            frame.image_data[y][x] += prev_frame.image_data[y][x];
+        let mut dec = FrameData::empty();
+        let mut prev = 0;
+        for y in 0..dec.height() {
+            let is_odd = y % 2 == 0;
+            if is_odd {
+                for x in 0..dec.width() {
+                    frame.image_data[y][x] += prev;
+                    prev = frame.image_data[y][x];
+                }
+            } else {
+                for x in (0..dec.width()).rev() {
+                    frame.image_data[y][x] += prev;
+                    prev = frame.image_data[y][x];
+                }
+            }
+        }
+    } else {
+        for y in 0..prev_frame.image_data.height() {
+            for x in 0..prev_frame.image_data.width() {
+                frame.image_data[y][x] += prev_frame.image_data[y][x];
+            }
         }
     }
 }

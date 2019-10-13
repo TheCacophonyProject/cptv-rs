@@ -13,25 +13,44 @@
       width: 100vw;
       height: 100vh;
     }
+    #canvas {
+      width: 640px;
+      height: 480px;
+    }
   </style>
 </head>
 <body>
 <div id="drop">
-  <p style="color: white;margin: 0;height: 200px;padding-top: 30px;text-align: center;font-family: sans-serif;font-size: 20px;">Drop a file to play</p>
+<!--  <p style="color: white;margin: 0;height: 200px;padding-top: 30px;text-align: center;font-family: sans-serif;font-size: 20px;">Drop a file to play</p>-->
   <canvas id="canvas" width="500" height="300" style="text-align: center"></canvas>
 </div>
 <script type="module">
-  import * as cptvPlayer from './pkg/cptv_player.js';
+  import * as cptvPlayer from './cptv_player/pkg/cptv_player.js';
   const canvas = document.getElementById("canvas");
   const context = canvas.getContext('2d');
   let frame;
   let width = 0;
   let height = 0;
-
+  let num = 0;
+  let totalFrames = 0;
   function drawFrame() {
-    cptvPlayer.get_frame(0, frame.data);
+    cptvPlayer.get_frame(num, frame.data);
     context.putImageData(frame, 0, 0);
-    requestAnimationFrame(drawFrame);
+    if (num < totalFrames) {
+        num++;
+        requestAnimationFrame(drawFrame);
+    }
+  }
+
+  function loadBuffer(buffer) {
+      cptvPlayer.init_with_cptv_data(new Uint8Array(buffer));
+      width = cptvPlayer.get_width();
+      height = cptvPlayer.get_height();
+      totalFrames = cptvPlayer.get_num_frames();
+      canvas.width = width;
+      canvas.height = height;
+      frame = context.getImageData(0, 0, width, height);
+      requestAnimationFrame(drawFrame)
   }
 
   cptvPlayer.default().then(async (_wasm) => {
@@ -43,17 +62,16 @@
         for (let i = 0; i < event.dataTransfer.items.length; i++) {
           if (event.dataTransfer.items[i].kind === 'file') {
             let file = event.dataTransfer.items[i].getAsFile();
-            let buffer = await file.arrayBuffer();
-            cptvPlayer.init_with_cptv_data(new Uint8Array(buffer));
-            width = cptvPlayer.get_width();
-            height = cptvPlayer.get_height();
-            canvas.width = width;
-            canvas.height = height;
-            frame = context.getImageData(0, 0, width, height);
-            requestAnimationFrame(drawFrame)
+            const buffer = await file.arrayBuffer();
+            loadBuffer(buffer);
           }
         }
       }
+    });
+
+    fetch('output.cptv').then(async data => {
+        const buffer = await data.arrayBuffer();
+        loadBuffer(buffer);
     });
 
     dropZone.addEventListener('dragover', (event) => {

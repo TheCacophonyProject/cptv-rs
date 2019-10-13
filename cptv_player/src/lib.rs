@@ -140,11 +140,16 @@ pub fn get_frame(number: u32, image_data: &mut [u8]) {
     //            image_data.len() / 4,
     //        )
     //    };
-    let _number = number as usize;
     let (mut offset, prev_block, prev_frame_num) = PLAYBACK_INFO.with(|info| {
         let info = info.borrow();
         (info.offset_in_block, info.prev_block, info.prev_frame)
     });
+    let prev_frame_num = if number as usize != prev_frame_num {
+        // We got a seek.
+        number as usize
+    } else {
+        prev_frame_num
+    };
     let (max, min, frames_per_iframe, num_frames, num_blocks) = CLIP_INFO.with(|meta| {
         let meta = meta.borrow();
         (
@@ -155,11 +160,10 @@ pub fn get_frame(number: u32, image_data: &mut [u8]) {
             meta.toc.len(),
         )
     });
-    let block_num = (prev_frame_num as u32 % frames_per_iframe as u32) as usize;
+    let block_num = (prev_frame_num as u32 / frames_per_iframe as u32) as usize;
     if block_num != prev_block {
         offset = 0;
     }
-    info!("frame at offset {} in block {}", offset, block_num);
     let inv_dynamic_range = 1.0 / (max - min) as f32;
     IFRAME_BLOCKS.with(|data| {
         let block = &data.borrow()[block_num];
@@ -177,6 +181,7 @@ pub fn get_frame(number: u32, image_data: &mut [u8]) {
                             let val = ((image[y][x] as u16 - min) as f32
                                 * inv_dynamic_range
                                 * 255.0) as u8;
+                            assert!(val <= 255);
                             image_data[i] = val;
                             image_data[i + 1] = val;
                             image_data[i + 2] = val;
