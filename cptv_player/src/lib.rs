@@ -85,9 +85,18 @@ pub fn init_with_cptv_data(input: &[u8]) -> Result<(), JsValue> {
     // into the browser console.
     console_error_panic_hook::set_once();
     console_log::init_with_level(Level::Debug).unwrap();
-    //let mut input: Vec<u8> = vec![0u8; buffer.length() as usize];
-    //buffer.copy_to(&mut input);
+
+    // Calculate how much we need to buffer in order to stream, and keep adjusting that estimate.
     if let Ok((remaining, meta)) = decode_cptv3_header(&input) {
+        let range_degrees_c = 150.0;
+        let max_val = 16384;
+        let min = meta.min_value as f64;
+        let max = meta.max_value as f64;
+        let f = range_degrees_c / max_val as f64;
+        let min_c = -10.0 + (f * min);
+        let max_c = -10.0 + (f * max);
+        info!("temp {}C - {}c", min_c, max_c);
+
         let zstd_blocks = decode_zstd_blocks(&meta, remaining);
         IFRAME_BLOCKS.with(|x| *x.borrow_mut() = zstd_blocks);
         CLIP_INFO.with(|x| *x.borrow_mut() = meta);
@@ -202,7 +211,6 @@ pub fn get_frame(number: u32, image_data: &mut [u8]) {
                     let next_frame = usize::min(num_frames as usize, prev_frame_num + 1);
                     info.prev_frame = next_frame;
                 });
-                // TODO(jon): Increment global offset somewhere, for next frame.
                 *prev_frame.borrow_mut() = frame;
             }
         });

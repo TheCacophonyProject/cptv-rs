@@ -38,7 +38,7 @@
     context.putImageData(frame, 0, 0);
     if (num < totalFrames) {
         num++;
-        requestAnimationFrame(drawFrame);
+        setTimeout(() => requestAnimationFrame(drawFrame), 1000/8.7);
     }
   }
 
@@ -69,7 +69,7 @@
       }
     });
 
-    fetch('output.cptv').then(async data => {
+    fetch('20191016-223709-v3.cptv').then(async data => {
         const buffer = await data.arrayBuffer();
         loadBuffer(buffer);
     });

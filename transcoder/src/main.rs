@@ -1,6 +1,7 @@
 use byteorder::WriteBytesExt;
 use cptv_common::{Cptv2, Cptv2Header, CptvFrame, FieldType, FrameData};
 
+use discrete_transforms::dct_2d::Dct2D;
 use libflate::gzip::Encoder;
 use libflate::gzip::{Decoder, EncodeOptions};
 use libflate::lz77::DefaultLz77Encoder;
@@ -18,7 +19,9 @@ use std::{fmt, fs};
 fn main() -> std::result::Result<(), std::boxed::Box<dyn std::error::Error>> {
     // 20190922-021028
     // 20190922-021916
-    match fs::read("20190922-021916.cptv") {
+    //let input_name = "20191016-223709";
+    let input_name = "20190922-021916";
+    match fs::read(format!("{}.cptv", input_name)) {
         Ok(input) => {
             println!("Input size {}", input.len());
             let mut gz_decoder = Decoder::new(&input[..])?;
@@ -27,7 +30,7 @@ fn main() -> std::result::Result<(), std::boxed::Box<dyn std::error::Error>> {
             match decode_cptv(&decoded) {
                 Ok((_, cptv)) => {
                     //dump_png_frames(&cptv);
-                    try_compression(&cptv);
+                    try_compression(&cptv, &input_name);
                 }
                 Err(Err::Error((remaining, e))) => {
                     println!("err {:?}, remaining {}", e, remaining.len())
@@ -408,13 +411,18 @@ fn push_string(output: &mut Vec<u8>, value: &str, code: FieldType) {
     output.extend_from_slice(value.as_bytes());
 }
 
-fn try_compression(cptv: &Cptv2) {
+fn predictor_average_2(a: i16, b: i16) -> i16 {
+    (a + b) / 2
+}
+
+fn try_compression(cptv: &Cptv2, file_name: &str) {
     let mut frames_size = 0;
     let seconds_between_iframes = 5;
     let i_frame_interval = 9 * seconds_between_iframes;
     let mut delta_frames = Vec::new();
     let delta_fn = delta_compress_identity;
-    let iframe_fn = delta_compress_frame_snaking;
+    let iframe_fn = delta_compress_lines_with_prediction; //delta_compress_lines_with_prediction;
+    let pred_average = predictor_average_2;
     let mut num_iframes = 0;
 
     // Dynamic range:
@@ -428,6 +436,12 @@ fn try_compression(cptv: &Cptv2) {
     }
     for (frame_index, frames) in cptv.frames.windows(2).enumerate() {
         let is_first_frame = frame_index == 0;
+
+        if is_first_frame {
+            // DO DCT:
+            // grab 8x8 blocks
+        }
+
         let is_i_frame = frame_index % i_frame_interval == 0;
 
         let frame_a = &frames[0];
@@ -453,12 +467,14 @@ fn try_compression(cptv: &Cptv2) {
         } else {
             //pack_frame(&mut delta_frames, iframe_fn(&frame_b.image_data), &frame_b);
             let mut d: FrameData = FrameData::empty();
+            let b = frame_b.image_data.clone();
+            let a = frame_a.image_data.clone();
             for y in 0..cptv.meta.height as usize {
                 for x in 0..cptv.meta.width as usize {
-                    d[y][x] = frame_b.image_data[y][x] - frame_a.image_data[y][x];
+                    d[y][x] = b[y][x] - a[y][x];
                 }
             }
-            pack_frame(&mut delta_frames, d, &frame_b, false);
+            pack_frame(&mut delta_frames, iframe_fn(&d), &frame_b, false);
         }
     }
 
@@ -555,7 +571,7 @@ fn try_compression(cptv: &Cptv2) {
     push_toc(&mut output, &iframe_offsets, FieldType::TableOfContents);
     output.extend_from_slice(&compressed_data);
     println!("All frames Zstd: {}", output.len());
-    let mut file = File::create("output.cptv").unwrap();
+    let mut file = File::create(format!("{}-v3.cptv", file_name)).unwrap();
     file.write_all(&output).unwrap();
     /*
     {
@@ -628,6 +644,68 @@ fn delta_compress_lines(data: &FrameData) -> FrameData {
         }
     }
     assert_eq!(data.as_slice(), dec.as_slice());
+    enc
+}
+
+fn predict(data: &FrameData, x: usize, y: usize) -> i16 {
+    let left = if x == 0 { 0 } else { data[y][x - 1] };
+    let top = if y == 0 { 0 } else { data[y - 1][x] };
+    let top_left = if y == 0 || x == 0 {
+        0
+    } else {
+        data[y - 1][x - 1]
+    };
+    let top_right = if x == 159 || y == 0 {
+        0
+    } else {
+        data[y - 1][x + 1]
+    };
+
+    // I guess we could also pull out previous enc values, and average those and use
+    // them for prediction too?  Use whichever predictor gets you closest to the prev pixel?
+    // Except the first pixel in a row is always predicted badly, you may want to wait until
+    // x == 2, so that you don't get weirdly biased results?
+
+    let p = predictor_average_2(
+        predictor_average_2(left, top_left),
+        predictor_average_2(top, top_right),
+    );
+
+    //let p = predictor_average_2(predictor_average_2(left, top_right), top);
+    /*
+    let p1 = left + top - top_left;
+    let pl = i16::abs(p1 - left);
+    let pt = i16::abs(p1 - top);
+    let p = if pl < pt { left } else { top };
+    */
+    // See what we predicted for the previous pixel, and try
+    // to use the value that is closest to that?  Basically try to do the thing
+    // that makes the data stream more ho
+    //            let left = if x == 0 { 0 } else { enc[y][x - 1] };
+    //            let p_x = i16::abs(p - left);
+    //            let p_x_2 = i16::abs(p - top);
+    //            //let p_x_3 = i16::abs(p - top);
+    //            // pick the best predictor, basically, but we can't use the current pixel!
+    //            let p = if p_x < p_x_2 { left } else { p };
+    p
+}
+
+fn delta_compress_lines_with_prediction(data: &FrameData) -> FrameData {
+    let mut enc = FrameData::empty();
+    for y in 0..120 {
+        for x in 0..160 {
+            enc[y][x] = data[y][x] - predict(&data, x, y);
+        }
+    }
+    // Verify delta encoding:
+    let mut dec = FrameData::empty();
+    for y in 0..120 {
+        for x in 0..160 {
+            dec[y][x] = enc[y][x] + predict(&dec, x, y);
+        }
+    }
+    assert_eq!(data.as_slice(), dec.as_slice());
+
     enc
 }
 
