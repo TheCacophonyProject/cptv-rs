@@ -1,13 +1,8 @@
-use cptv_common::{Cptv3Header, CptvFrame, FrameData};
-use js_sys::Uint16Array;
-use js_sys::Uint8Array;
-use log::Level;
+use cptv_common::{Cptv3Header, CptvFrame};
 use std::cell::RefCell;
 use wasm_bindgen::prelude::*;
 
 use crate::decoder::{decode_cptv3_header, decode_frame};
-#[allow(unused)]
-use log::{info, trace, warn};
 use wasm_bindgen::__rt::std::io::Cursor;
 use zstd_rs::frame_decoder;
 
@@ -83,8 +78,8 @@ fn decode_zstd_blocks(meta: &Cptv3Header, remaining: &[u8]) -> Vec<Vec<u8>> {
 pub fn init_with_cptv_data(input: &[u8]) -> Result<(), JsValue> {
     // Init the console logging stuff on startup, so that wasm can print things
     // into the browser console.
-    console_error_panic_hook::set_once();
-    console_log::init_with_level(Level::Debug).unwrap();
+    // console_error_panic_hook::set_once();
+    // console_log::init_with_level(Level::Debug).unwrap();
 
     // Calculate how much we need to buffer in order to stream, and keep adjusting that estimate.
     if let Ok((remaining, meta)) = decode_cptv3_header(&input) {
@@ -95,7 +90,7 @@ pub fn init_with_cptv_data(input: &[u8]) -> Result<(), JsValue> {
         let f = range_degrees_c / max_val as f64;
         let min_c = -10.0 + (f * min);
         let max_c = -10.0 + (f * max);
-        info!("temp {}C - {}c", min_c, max_c);
+        //info!("temp {}C - {}c", min_c, max_c);
 
         let zstd_blocks = decode_zstd_blocks(&meta, remaining);
         IFRAME_BLOCKS.with(|x| *x.borrow_mut() = zstd_blocks);
@@ -142,13 +137,6 @@ pub fn get_max_value() -> u16 {
 #[wasm_bindgen]
 pub fn get_frame(number: u32, image_data: &mut [u8]) {
     // Find the block closest, decode from the start to frame x:
-    //    let mut output = unsafe {
-    //        Vec::from_raw_parts(
-    //            image_data.as_mut_ptr() as *mut u32,
-    //            image_data.len() / 4,
-    //            image_data.len() / 4,
-    //        )
-    //    };
     let (mut offset, prev_block, prev_frame_num) = PLAYBACK_INFO.with(|info| {
         let info = info.borrow();
         (info.offset_in_block, info.prev_block, info.prev_frame)
@@ -179,7 +167,7 @@ pub fn get_frame(number: u32, image_data: &mut [u8]) {
         // Read the frame out of the data:
         FRAME_BUFFER.with(|prev_frame| {
             let frame = {
-                if let Ok((remaining, mut frame)) =
+                if let Ok((remaining, frame)) =
                     decode_frame(&prev_frame.borrow(), &block[offset..], offset == 0)
                 {
                     let image = &frame.image_data;
@@ -190,7 +178,6 @@ pub fn get_frame(number: u32, image_data: &mut [u8]) {
                             let val = ((image[y][x] as u16 - min) as f32
                                 * inv_dynamic_range
                                 * 255.0) as u8;
-                            assert!(val <= 255);
                             image_data[i] = val;
                             image_data[i + 1] = val;
                             image_data[i + 2] = val;

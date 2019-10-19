@@ -69,10 +69,24 @@
       }
     });
 
-    fetch('20191016-223709-v3.cptv').then(async data => {
-        const buffer = await data.arrayBuffer();
-        loadBuffer(buffer);
-    });
+    const response = await fetch('20190922-021916-v3.cptv');
+    for (const header of response.headers.entries()) {
+      console.log(header);
+    }
+    const reader = response.body.getReader();
+    let allDone = false;
+    while (!allDone) {
+      let {done, value} = await reader.read();
+      if (value !== undefined) {
+        // Push the value into the wasm decoder...
+        console.log('got chunk', value);
+        // NOTE(jon): Can do reader.cancel() on user input, if we need to start again from elsewhere.
+      }
+      allDone = done;
+    }
+    //    const buffer = await data.arrayBuffer();
+    //    loadBuffer(buffer);
+    //});
 
     dropZone.addEventListener('dragover', (event) => {
       event.preventDefault();

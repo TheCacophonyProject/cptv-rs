@@ -17,9 +17,9 @@ wasm-bindgen = "0.2.50"
 wee_alloc = "0.4.5"
 
 # Routing messages to the JS error console
-console_log = "0.1.2"
-log = "0.4.8"
-console_error_panic_hook = "0.1.6"
+#console_log = "0.1.2"
+#log = "0.4.8"
+#console_error_panic_hook = "0.1.6"
 
 # Teach rust about JS types (Float32Array)
 js-sys = "0.3.27"

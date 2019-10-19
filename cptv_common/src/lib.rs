@@ -1,9 +1,9 @@
-use derivative::Derivative;
-use std::fmt;
-use std::fmt::{Error, Formatter};
+//use derivative::Derivative;
+//use std::fmt;
+//use std::fmt::{Error, Formatter};
 use std::ops::{Index, IndexMut};
 
-#[derive(Debug)]
+//#[derive(Debug)]
 pub struct Cptv2Header {
     pub timestamp: u64,
     pub width: u32,
@@ -20,7 +20,7 @@ pub struct Cptv2Header {
     pub accuracy: Option<f32>,
 }
 
-#[derive(Debug)]
+//#[derive(Debug)]
 pub struct Cptv3Header {
     pub v2: Cptv2Header,
     pub min_value: u16,
@@ -98,14 +98,14 @@ impl IndexMut<usize> for FrameData {
     }
 }
 
-#[derive(Derivative)]
-#[derivative(Debug, Copy, Clone)]
+//#[derive(Derivative)]
+//#[derivative(Debug, Copy, Clone)]
 pub struct CptvFrame {
     pub time_on: u32,
     pub bit_width: u8,
     pub frame_size: u32,
     pub last_ffc_time: u32,
-    #[derivative(Debug = "ignore")]
+    //#[derivative(Debug = "ignore")]
     pub image_data: FrameData,
 }
 
@@ -131,11 +131,11 @@ pub struct Cptv3 {
     pub frames: Vec<CptvFrame>,
 }
 
-impl fmt::Debug for Cptv2 {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        write!(f, "CPTV file with {} frames", self.frames.len())
-    }
-}
+//impl fmt::Debug for Cptv2 {
+//    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+//        write!(f, "CPTV file with {} frames", self.frames.len())
+//    }
+//}
 
 pub struct FrameHeader {
     length: u32,
@@ -156,7 +156,7 @@ impl FrameHeader {
 }
 
 #[repr(u8)]
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq)]
 pub enum FieldType {
     Header = b'H',
     Timestamp = b'T',
@@ -266,4 +266,57 @@ impl ClipHeader {
     pub fn as_bytes(&self) -> Vec<u8> {
         Vec::new()
     }
+}
+
+#[inline(always)]
+fn average_2(a: i16, b: i16) -> i16 {
+    (a + b) / 2
+}
+
+pub fn predict_left(data: &FrameData, x: usize, y: usize) -> i16 {
+    let left = if x == 0 {
+        if y == 0 {
+            0
+        } else {
+            data[y - 1][x]
+        }
+    } else {
+        data[y][x - 1]
+    };
+    let top = if y == 0 { 0 } else { data[y - 1][x] };
+    let top_left = if y == 0 || x == 0 {
+        left
+    } else {
+        data[y - 1][x - 1]
+    };
+    let top_right = if x == data.width() - 1 || y == 0 {
+        top
+    } else {
+        data[y - 1][x + 1]
+    };
+    average_2(average_2(left, top_left), average_2(top, top_right))
+}
+
+pub fn predict_right(data: &FrameData, x: usize, y: usize) -> i16 {
+    let right = if x == data.width() - 1 {
+        if y == 0 {
+            0
+        } else {
+            data[y - 1][x]
+        }
+    } else {
+        data[y][x + 1]
+    };
+    let top = if y == 0 { 0 } else { data[y - 1][x] };
+    let top_left = if y == 0 || x == 0 {
+        right
+    } else {
+        data[y - 1][x - 1]
+    };
+    let top_right = if x == data.width() - 1 || y == 0 {
+        top
+    } else {
+        data[y - 1][x + 1]
+    };
+    average_2(average_2(right, top_left), average_2(top, top_right))
 }

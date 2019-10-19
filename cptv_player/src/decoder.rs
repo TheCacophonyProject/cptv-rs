@@ -1,5 +1,6 @@
-use cptv_common::{Cptv2Header, Cptv3, Cptv3Header, CptvFrame, FieldType, FrameData};
-use log::{info, trace, warn};
+use cptv_common::{
+    predict_left, predict_right, Cptv2Header, Cptv3, Cptv3Header, CptvFrame, FieldType, FrameData,
+};
 use nom::bytes::complete::{tag, take};
 use nom::number::complete::{le_f32, le_i16, le_i8, le_u16, le_u32, le_u64, le_u8};
 use FieldType::*;
@@ -74,7 +75,10 @@ pub fn decode_cptv3_header(i: &[u8]) -> nom::IResult<&[u8], Cptv3Header> {
             FramesPerIframe => {
                 meta.frames_per_iframe = le_u8(val)?.1;
             }
-            x => panic!("Unknown header field type {:?}, {}", x, field),
+            x => {
+                //panic!("Unknown header field type {}", field)
+                std::process::abort();
+            }
         }
     }
     let (i, field) = le_u8(outer)?;
@@ -125,7 +129,10 @@ pub fn decode_frame<'a>(
             LastFfcTime => {
                 frame.last_ffc_time = le_u32(val)?.1;
             }
-            x => panic!("Unknown frame field type {:?} {:?}", x, frame),
+            x => {
+                std::process::abort();
+                //panic!("Unknown frame field type"),
+            }
         }
     }
     assert!(frame.frame_size > 0);
@@ -158,24 +165,19 @@ fn copy_frame_data<'a>(data: &'a [u8], frame: &mut CptvFrame) -> nom::IResult<&'
 }
 
 fn unpack_frame(prev_frame: &CptvFrame, frame: &mut CptvFrame, is_iframe: bool) {
-    if is_iframe {
-        let mut dec = FrameData::empty();
-        let mut prev = 0;
-        for y in 0..dec.height() {
-            let is_odd = y % 2 == 0;
-            if is_odd {
-                for x in 0..dec.width() {
-                    frame.image_data[y][x] += prev;
-                    prev = frame.image_data[y][x];
-                }
-            } else {
-                for x in (0..dec.width()).rev() {
-                    frame.image_data[y][x] += prev;
-                    prev = frame.image_data[y][x];
-                }
+    for y in 0..frame.image_data.height() {
+        let is_odd = y % 2 == 0;
+        if is_odd {
+            for x in 0..frame.image_data.width() {
+                frame.image_data[y][x] += predict_left(&frame.image_data, x, y);
+            }
+        } else {
+            for x in (0..frame.image_data.width()).rev() {
+                frame.image_data[y][x] += predict_right(&frame.image_data, x, y);
             }
         }
-    } else {
+    }
+    if !is_iframe {
         for y in 0..prev_frame.image_data.height() {
             for x in 0..prev_frame.image_data.width() {
                 frame.image_data[y][x] += prev_frame.image_data[y][x];

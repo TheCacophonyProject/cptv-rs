@@ -5,3 +5,7 @@ members = [
 	"cptv_player",
 	"cptv_common"
 ]
+[profile.release]
+lto = true
+opt-level='s'
+panic = "abort"
