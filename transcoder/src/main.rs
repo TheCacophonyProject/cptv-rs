@@ -1,5 +1,7 @@
 use byteorder::WriteBytesExt;
-use cptv_common::{predict_left, Cptv2, Cptv2Header, CptvFrame, FieldType, FrameData};
+use cptv_common::{
+    predict_left, predict_right, Cptv2, Cptv2Header, CptvFrame, FieldType, FrameData,
+};
 
 use discrete_transforms::dct_2d::Dct2D;
 use libflate::gzip::Encoder;
@@ -20,7 +22,7 @@ fn main() -> std::result::Result<(), std::boxed::Box<dyn std::error::Error>> {
     // 20190922-021028
     // 20190922-021916
     //let input_name = "20191016-223709";
-    let input_name = "20190922-021916";
+    let input_name = "20191020-062935";
     //let input_name = "20190922-021028";
     match fs::read(format!("{}.cptv", input_name)) {
         Ok(input) => {
@@ -115,7 +117,7 @@ fn decode_header(i: &[u8]) -> nom::IResult<&[u8], Cptv2Header> {
             b'U' => {
                 meta.accuracy = Some(le_f32(val)?.1);
             }
-            x => panic!("Unknown header field type {} {:?}", x, meta),
+            x => panic!("Unknown header field type {}", x),
         }
     }
     Ok((outer, meta))
@@ -240,7 +242,7 @@ fn decode_frame<'a>(
             b'c' => {
                 frame.last_ffc_time = le_u32(val)?.1;
             }
-            x => panic!("Unknown frame field type {} {:?}", x, frame),
+            x => panic!("Unknown frame field type {}", x),
         }
     }
     assert!(frame.frame_size > 0);
@@ -393,7 +395,7 @@ fn push_field<T: Sized>(output: &mut Vec<u8>, value: &T, code: FieldType) -> usi
 
 fn push_toc(output: &mut Vec<u8>, value: &[u32], code: FieldType) {
     use byteorder::LittleEndian;
-    assert_eq!(code, FieldType::TableOfContents);
+    assert!(code == FieldType::TableOfContents);
     output.push(code as u8);
     output
         .write_u32::<LittleEndian>(value.len() as u32)
