@@ -1,9 +1,12 @@
-use cptv_common::{Cptv3Header, CptvFrame};
-use std::cell::RefCell;
-use wasm_bindgen::prelude::*;
-
 use crate::decoder::{decode_cptv3_header, decode_frame};
+use cptv_common::{Cptv3Header, CptvFrame};
+use log::Level;
+#[allow(unused)]
+use log::{info, trace, warn};
+use std::cell::RefCell;
+use std::ops::Range;
 use wasm_bindgen::__rt::std::io::Cursor;
+use wasm_bindgen::prelude::*;
 use zstd_rs::frame_decoder;
 
 mod decoder;
@@ -26,6 +29,23 @@ impl PlaybackInfo {
             prev_frame: 0,
         }
     }
+}
+
+struct DownloadedData {
+    bytes: Vec<u8>,
+    ranges: Vec<Range<usize>>,
+}
+impl DownloadedData {
+    pub fn new() -> DownloadedData {
+        DownloadedData {
+            bytes: Vec::new(),
+            ranges: Vec::new(),
+        }
+    }
+}
+
+thread_local! {
+    static RAW_FILE_DATA: RefCell<DownloadedData> = RefCell::new(DownloadedData::new());
 }
 
 thread_local! {
@@ -75,13 +95,42 @@ fn decode_zstd_blocks(meta: &Cptv3Header, remaining: &[u8]) -> Vec<Vec<u8>> {
 }
 
 #[wasm_bindgen]
-pub fn init_with_cptv_data(input: &[u8]) -> Result<(), JsValue> {
+pub fn init_buffer_with_size(size: usize) -> Result<(), JsValue> {
     // Init the console logging stuff on startup, so that wasm can print things
     // into the browser console.
-    // console_error_panic_hook::set_once();
-    // console_log::init_with_level(Level::Debug).unwrap();
+    console_error_panic_hook::set_once();
+    console_log::init_with_level(Level::Debug).unwrap();
 
-    // Calculate how much we need to buffer in order to stream, and keep adjusting that estimate.
+    RAW_FILE_DATA.with(|x| {
+        x.borrow_mut().bytes = vec![0u8; size];
+    });
+    Ok(())
+}
+
+#[wasm_bindgen]
+pub fn insert_chunk_at_offset(chunk: &[u8], offset: usize) -> Result<(), JsValue> {
+    RAW_FILE_DATA.with(|x| {
+        let range = offset..offset + chunk.len();
+        let download_data = &mut x.borrow_mut();
+        let target_slice = &mut download_data.bytes[range.clone()];
+        target_slice.copy_from_slice(chunk);
+        download_data.ranges.push(range);
+    });
+    Ok(())
+}
+
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_name = loadedHeaderInfo)]
+    fn loaded_header_info();
+
+    #[wasm_bindgen(js_name = cancelLoading)]
+    fn cancel_loading();
+}
+
+#[wasm_bindgen]
+pub fn init_with_cptv_data(input: &[u8]) -> Result<(), JsValue> {
+    // TODO(jon): Calculate how much we need to buffer in order to stream, and keep adjusting that estimate.
     if let Ok((remaining, meta)) = decode_cptv3_header(&input) {
         let range_degrees_c = 150.0;
         let max_val = 16384;
@@ -135,6 +184,29 @@ pub fn get_max_value() -> u16 {
 }
 
 #[wasm_bindgen]
+pub fn queue_frame(number: u32, callback: JsValue) -> bool {
+    // Scrub to frame `number`.
+    // If we have loaded everything, just return true.
+    RAW_FILE_DATA.with(|x| {
+        let downloaded_data = x.borrow();
+
+        // Work out where frame `number` would be in terms of bytes, then search ranges for that byte offset.
+        // Cancel any current download if it's not immediately getting us the bytes we need.
+
+        // If there are any ranges after `number` that haven't downloaded, queue them for download from the
+        // earliest un-downloaded offset.
+
+        // Stick the frame we want in a pending playback frame variable.
+        // Later, when the byte range we want comes in, and we have enough buffered, signal the front-end
+        // to get the frame, and continue playing.
+
+        // We also need to book-keep what the start offset is for the range we're currently downloading, if any.
+    });
+    // cancel_loading();
+    true
+}
+
+#[wasm_bindgen]
 pub fn get_frame(number: u32, image_data: &mut [u8]) {
     // Find the block closest, decode from the start to frame x:
     let (mut offset, prev_block, prev_frame_num) = PLAYBACK_INFO.with(|info| {
@@ -178,7 +250,7 @@ pub fn get_frame(number: u32, image_data: &mut [u8]) {
                             let val = ((image[y][x] as u16 - min) as f32
                                 * inv_dynamic_range
                                 * 255.0) as u8;
-                            image_data[i] = val;
+                            image_data[i + 0] = val;
                             image_data[i + 1] = val;
                             image_data[i + 2] = val;
                             image_data[i + 3] = 255;

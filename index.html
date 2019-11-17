@@ -33,6 +33,20 @@
   let height = 0;
   let num = 0;
   let totalFrames = 0;
+  let reader;
+  let controller;
+  const isFirefox = window.navigator.userAgent.toLowerCase().includes("firefox");
+  window.loadedHeaderInfo = function() {
+    console.log('loaded header info');
+  };
+
+  window.cancelLoading = async () => {
+    if (isFirefox) {
+      reader.cancel();
+    }
+    controller.abort();
+  };
+
   function drawFrame() {
     cptvPlayer.get_frame(num, frame.data);
     context.putImageData(frame, 0, 0);
@@ -53,45 +67,60 @@
       requestAnimationFrame(drawFrame)
   }
 
-  cptvPlayer.default().then(async (_wasm) => {
-    const dropZone = document.getElementById('drop');
-    // Setup drop zone
-    dropZone.addEventListener('drop', async (event) => {
-      event.preventDefault();
-      if (event.dataTransfer.items) {
-        for (let i = 0; i < event.dataTransfer.items.length; i++) {
-          if (event.dataTransfer.items[i].kind === 'file') {
-            let file = event.dataTransfer.items[i].getAsFile();
-            const buffer = await file.arrayBuffer();
-            loadBuffer(buffer);
-          }
+  const dropZone = document.getElementById('drop');
+  // Setup drop zone
+  dropZone.addEventListener('drop', async (event) => {
+    event.preventDefault();
+    if (event.dataTransfer.items) {
+      for (let i = 0; i < event.dataTransfer.items.length; i++) {
+        if (event.dataTransfer.items[i].kind === 'file') {
+          let file = event.dataTransfer.items[i].getAsFile();
+          const buffer = await file.arrayBuffer();
+          loadBuffer(buffer);
         }
       }
-    });
-
-    const response = await fetch('20190922-021916-v3.cptv');
-    for (const header of response.headers.entries()) {
-      console.log(header);
     }
-    const reader = response.body.getReader();
-    let allDone = false;
-    while (!allDone) {
-      let {done, value} = await reader.read();
-      if (value !== undefined) {
-        // Push the value into the wasm decoder...
-        console.log('got chunk', value);
-        // NOTE(jon): Can do reader.cancel() on user input, if we need to start again from elsewhere.
-      }
-      allDone = done;
-    }
-    //    const buffer = await data.arrayBuffer();
-    //    loadBuffer(buffer);
-    //});
-
-    dropZone.addEventListener('dragover', (event) => {
-      event.preventDefault();
-    });
   });
+
+  dropZone.addEventListener('dragover', (event) => {
+    event.preventDefault();
+  });
+
+  (async function () {
+    await cptvPlayer.default();
+    controller = new AbortController();
+    // signal to pass to fetch
+    const signal = controller.signal;
+
+    try {
+      const response = await fetch('20190922-021916-v3.cptv', {signal});
+      // Pre allocate a buffer of this length:
+      const expectedContentLength = response.headers.get('content-length');
+      reader = response.body.getReader();
+      cptvPlayer.init_buffer_with_size(Number(expectedContentLength));
+      let offset = 0;
+
+      while (true) {
+        let {done, value} = await reader.read();
+        if (done) {
+          break;
+        }
+        // If we're seeking, we'll have a different starting offset for the range we've downloaded.
+        cptvPlayer.insert_chunk_at_offset(value, offset);
+
+        console.log('got chunk', value.length, offset);
+        offset += value.length;
+        // wasm decoder needs to let the UI know when it has all the info for the header, so it can know where to
+        // download new iframe offsets from.
+
+        // Push the value into the wasm decoder...
+      }
+    } catch (err) {
+      if (err.name !== 'AbortError') { // handle abort()
+        throw err;
+      }
+    }
+  }());
 </script>
 </body>
 </html>
