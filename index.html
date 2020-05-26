@@ -93,7 +93,7 @@
     const signal = controller.signal;
 
     try {
-      const response = await fetch('20190922-021916-v3.cptv', {signal});
+      const response = await fetch('20200317-030448-v3.cptv', {signal});
       // Pre allocate a buffer of this length:
       const expectedContentLength = response.headers.get('content-length');
       reader = response.body.getReader();

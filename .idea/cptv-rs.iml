@@ -4,40 +4,73 @@
     <exclude-output />
     <content url="file://$MODULE_DIR$">
       <sourceFolder url="file://$MODULE_DIR$/transcoder/src" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/../cptv-rs\examples" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/../cptv-rs\tests" isTestSource="true" />
-      <sourceFolder url="file://$MODULE_DIR$/../cptv-rs\benches" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/examples" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/tests" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/benches" isTestSource="true" />
-      <sourceFolder url="file://$MODULE_DIR$/../cptv-rs\src" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/transcoder\examples" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/transcoder\tests" isTestSource="true" />
-      <sourceFolder url="file://$MODULE_DIR$/transcoder\benches" isTestSource="true" />
-      <sourceFolder url="file://$MODULE_DIR$/cptv_player/src" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/cptv_player\examples" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/cptv_player\tests" isTestSource="true" />
-      <sourceFolder url="file://$MODULE_DIR$/cptv_player\benches" isTestSource="true" />
-      <sourceFolder url="file://$MODULE_DIR$/cptv_common/src" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/cptv_common\examples" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/cptv_common\tests" isTestSource="true" />
-      <sourceFolder url="file://$MODULE_DIR$/cptv_common\benches" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/transcoder/examples" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/transcoder/tests" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/transcoder/benches" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/cptv_player/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/cptv_player/examples" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/cptv_player/tests" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/cptv_player/benches" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/cptv_common/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/cptv_common/examples" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/cptv_common/tests" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/cptv_common/benches" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/target/debug/build/wasm-bindgen-0a37df632962b785/out" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/target/debug/build/proc-macro2-e035aaa296bcab91/out" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/target/debug/build/wasm-bindgen-shared-9f56df095e832882/out" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/target/debug/build/syn-48a1ab746a052cfb/out" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/target/debug/build/log-51f6a74034f0bdb2/out" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/target/debug/build/nom-97b0700f10990154/out" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/target/debug/build/lexical-core-f9cb6c6603ab15d9/out" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/target/debug/build/ryu-9dd44e466b0a7bc6/out" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/target/debug/build/arrayvec-dc2d1b6caded7b8c/out" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/target/debug/build/memchr-66bc27663ed98544/out" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/target/debug/build/web-sys-1212643fd58d0017/out" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/target/debug/build/nom-387a3822e8d977ac/out" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/target/debug/build/anyhow-1645c97d5ea19a1d/out" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/target/debug/build/byteorder-a97e244de9f8f73d/out" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/target/debug/build/wee_alloc-a7f61a58b99e026e/out" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/target/debug/build/winapi-6c81e7f0159eaa52/out" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/target/debug/build/libc-88281507c2b4db57/out" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/target/debug/build/num-traits-a2da8add60113e49/out" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/target/debug/build/crc32fast-fcc415010f93a047/out" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/target/debug/build/zstd-sys-04504a470290ae52/out" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/target/debug/build/getrandom-a5baf70983bb09c3/out" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/target/debug/build/proc-macro2-5722c9ca7e849809/out" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/target/debug/build/syn-bbfc5252b0dad13e/out" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/target/debug/build/bitflags-9c963443942af320/out" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/target/debug/build/wasm-bindgen-e3ef726cd29608f2/out" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/target/debug/build/proc-macro2-4a7c488bffb9c6a5/out" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/target/debug/build/wasm-bindgen-shared-7eff63cea1a54944/out" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/target/debug/build/syn-319128297324fdc0/out" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/target/debug/build/log-cec6dca85ccb5ddd/out" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/target/debug/build/nom-5965d89f62b445bb/out" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/target/debug/build/lexical-core-6fcedb18b1e362a2/out" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/target/debug/build/ryu-fd33c784274f5c13/out" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/target/debug/build/arrayvec-5f6e6ee03b37d562/out" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/target/debug/build/memchr-501a1615a07d40b4/out" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/target/debug/build/web-sys-6932a60f2e4d7adc/out" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/target/debug/build/nom-eca1cd44bc5dd2a3/out" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/target/debug/build/anyhow-562e54bbb21649e8/out" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/target/debug/build/byteorder-b80fc94ac5717693/out" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/target/debug/build/wee_alloc-8f09c60295ad9048/out" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/target/debug/build/winapi-e1ebf5ae40ea6f61/out" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/target/debug/build/libc-422a5bed01f223de/out" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/target/debug/build/num-traits-ff00ab36c0be5951/out" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/target/debug/build/crc32fast-bd03b3b5e2e94a5d/out" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/target/debug/build/zstd-sys-3be1c699fdbfd39d/out" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/target/debug/build/getrandom-f449dc5cb9300d8a/out" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/target/debug/build/proc-macro2-8d82765d61d29fff/out" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/target/debug/build/syn-e8f0043abc57d6e3/out" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/target/debug/build/bitflags-d4fa96f8e53d0edb/out" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/cptv_common/target" />
-      <excludeFolder url="file://$MODULE_DIR$/cptv_common\target" />
       <excludeFolder url="file://$MODULE_DIR$/cptv_player/target" />
-      <excludeFolder url="file://$MODULE_DIR$/cptv_player\target" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
       <excludeFolder url="file://$MODULE_DIR$/transcoder/target" />
-      <excludeFolder url="file://$MODULE_DIR$/transcoder\target" />
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />

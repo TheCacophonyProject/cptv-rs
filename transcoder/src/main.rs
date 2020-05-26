@@ -22,7 +22,9 @@ fn main() -> std::result::Result<(), std::boxed::Box<dyn std::error::Error>> {
     // 20190922-021028
     // 20190922-021916
     //let input_name = "20191016-223709";
-    let input_name = "20191020-062935";
+    // let input_name = "20191020-062935";
+    //let input_name = "20200317-222551";
+    let input_name = "20200525.134708.107";
     //let input_name = "20190922-021028";
     match fs::read(format!("{}.cptv", input_name)) {
         Ok(input) => {
@@ -32,6 +34,7 @@ fn main() -> std::result::Result<(), std::boxed::Box<dyn std::error::Error>> {
             gz_decoder.read_to_end(&mut decoded)?;
             match decode_cptv(&decoded) {
                 Ok((_, cptv)) => {
+                    // TODO(jon): Fix offset artifact issues.
                     //dump_png_frames(&cptv);
                     try_compression(&cptv, &input_name);
                 }
@@ -56,7 +59,11 @@ fn decode_header(i: &[u8]) -> nom::IResult<&[u8], Cptv2Header> {
         width: 0,
         height: 0,
         compression: 0,
+        device_id: 0,
+        fps: 9, // Default
         device_name: String::new(),
+        brand: String::new(),
+        model: String::new(),
         motion_config: None,
         preview_secs: None,
         latitude: None,
@@ -72,12 +79,15 @@ fn decode_header(i: &[u8]) -> nom::IResult<&[u8], Cptv2Header> {
     let (i, _) = tag(b"H")(i)?;
     let (i, num_header_fields) = le_u8(i)?;
 
+    dbg!(num_header_fields);
     let mut outer = i;
     for _ in 0..num_header_fields as usize {
         let (i, field_length) = le_u8(outer)?;
         let (i, field) = le_u8(i)?;
         let (i, val) = take(field_length)(i)?;
         outer = i;
+        dbg!(field_length);
+        dbg!(format!("{:?}", field as char));
         match field {
             b'T' => {
                 meta.timestamp = le_u64(val)?.1;
@@ -93,6 +103,10 @@ fn decode_header(i: &[u8]) -> nom::IResult<&[u8], Cptv2Header> {
             }
             b'D' => {
                 meta.device_name = String::from_utf8_lossy(val).into();
+                dbg!(&meta.device_name);
+            }
+            b'I' => {
+                meta.device_id = le_u32(val)?.1;
             }
 
             // Optional fields
@@ -116,6 +130,16 @@ fn decode_header(i: &[u8]) -> nom::IResult<&[u8], Cptv2Header> {
             }
             b'U' => {
                 meta.accuracy = Some(le_f32(val)?.1);
+            }
+            b'E' => {
+                meta.model = String::from_utf8_lossy(val).into();
+            }
+            b'B' => {
+                meta.brand = String::from_utf8_lossy(val).into();
+                dbg!(&meta.brand);
+            }
+            b'Z' => {
+                meta.fps = le_u8(val)?.1;
             }
             x => panic!("Unknown header field type {}", x),
         }
@@ -277,6 +301,11 @@ fn decode_frames(i: &[u8], width: u32, height: u32) -> nom::IResult<&[u8], Vec<C
         frames.push(frame);
         prev_frame = frames.last();
     }
+
+    for frame in &mut frames {
+        frame.image_data = frame.image_data.offset(36);
+    }
+
     Ok((i, frames))
 }
 
@@ -291,12 +320,15 @@ fn decode_cptv(i: &[u8]) -> nom::IResult<&[u8], Cptv2> {
 fn get_dynamic_range(frame: &FrameData) -> RangeInclusive<i16> {
     let mut frame_max = 0;
     let mut frame_min = std::i16::MAX;
-    for y in 0..frame.height() as usize {
-        for x in 0..frame.width() as usize {
-            let val = frame[y][x];
-            frame_max = i16::max(val, frame_max);
-            frame_min = i16::min(val, frame_min);
-        }
+
+    for val in frame
+        .as_values()
+        .iter()
+        .take(frame.width() * frame.height() - 36)
+    // NOTE(jon): Offset
+    {
+        frame_max = i16::max(*val, frame_max);
+        frame_min = i16::min(*val, frame_min);
     }
     frame_min..=frame_max
 }

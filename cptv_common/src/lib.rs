@@ -10,6 +10,10 @@ pub struct Cptv2Header {
     pub height: u32,
     pub compression: u8,
     pub device_name: String,
+    pub brand: String,
+    pub model: String,
+    pub device_id: u32,
+    pub fps: u8,
 
     pub motion_config: Option<String>,
     pub preview_secs: Option<u8>,
@@ -39,7 +43,11 @@ impl Cptv3Header {
                 width: 0,
                 height: 0,
                 compression: 0,
+                fps: 9,
                 device_name: "".to_string(),
+                brand: "".to_string(),
+                model: "".to_string(),
+                device_id: 0,
                 motion_config: None,
                 preview_secs: None,
                 latitude: None,
@@ -81,6 +89,23 @@ impl FrameData {
                 std::mem::size_of_val(self),
             )
         }
+    }
+
+    pub fn as_values(&self) -> &[i16] {
+        unsafe { std::slice::from_raw_parts(&self[0] as *const i16, std::mem::size_of_val(self)) }
+    }
+
+    pub fn offset(&self, offset: usize) -> FrameData {
+        let mut frame = FrameData::empty();
+        let mut pixels = self.as_values().iter().skip(offset);
+        for y in 0..frame.height() {
+            for x in 0..frame.width() {
+                let pixel = *pixels.next().unwrap_or(&0i16);
+                //assert!(pixel >= 0);
+                frame[y][x] = pixel;
+            }
+        }
+        frame
     }
 }
 
