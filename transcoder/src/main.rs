@@ -59,11 +59,12 @@ fn decode_header(i: &[u8]) -> nom::IResult<&[u8], Cptv2Header> {
         width: 0,
         height: 0,
         compression: 0,
-        device_id: 0,
-        fps: 9, // Default
         device_name: String::new(),
-        brand: String::new(),
-        model: String::new(),
+        device_id: None,
+        fps: Some(9), // Default
+        serial_number: None,
+        brand: None,
+        model: None,
         motion_config: None,
         preview_secs: None,
         latitude: None,
@@ -71,6 +72,7 @@ fn decode_header(i: &[u8]) -> nom::IResult<&[u8], Cptv2Header> {
         loc_timestamp: None,
         altitude: None,
         accuracy: None,
+        firmware_version: None,
     };
 
     let (i, _) = tag(b"CPTV")(i)?;
@@ -105,11 +107,11 @@ fn decode_header(i: &[u8]) -> nom::IResult<&[u8], Cptv2Header> {
                 meta.device_name = String::from_utf8_lossy(val).into();
                 dbg!(&meta.device_name);
             }
-            b'I' => {
-                meta.device_id = le_u32(val)?.1;
-            }
 
             // Optional fields
+            b'I' => {
+                meta.device_id = Some(String::from_utf8_lossy(val).into());
+            }
             b'M' => {
                 meta.motion_config = Some(String::from_utf8_lossy(val).into());
             }
@@ -132,14 +134,14 @@ fn decode_header(i: &[u8]) -> nom::IResult<&[u8], Cptv2Header> {
                 meta.accuracy = Some(le_f32(val)?.1);
             }
             b'E' => {
-                meta.model = String::from_utf8_lossy(val).into();
+                meta.model = Some(String::from_utf8_lossy(val).into());
             }
             b'B' => {
-                meta.brand = String::from_utf8_lossy(val).into();
+                meta.brand = Some(String::from_utf8_lossy(val).into());
                 dbg!(&meta.brand);
             }
             b'Z' => {
-                meta.fps = le_u8(val)?.1;
+                meta.fps = Some(le_u8(val)?.1);
             }
             x => panic!("Unknown header field type {}", x),
         }
@@ -302,9 +304,9 @@ fn decode_frames(i: &[u8], width: u32, height: u32) -> nom::IResult<&[u8], Vec<C
         prev_frame = frames.last();
     }
 
-    for frame in &mut frames {
-        frame.image_data = frame.image_data.offset(36);
-    }
+    // for frame in &mut frames {
+    //     frame.image_data = frame.image_data.offset(36);
+    // }
 
     Ok((i, frames))
 }

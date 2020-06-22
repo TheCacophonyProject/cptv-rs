@@ -1,20 +1,24 @@
 //use derivative::Derivative;
 //use std::fmt;
 //use std::fmt::{Error, Formatter};
+use chrono::{NaiveDate, NaiveDateTime};
+use core::fmt;
+use std::fmt::{Debug, Formatter};
 use std::ops::{Index, IndexMut};
 
-//#[derive(Debug)]
 pub struct Cptv2Header {
     pub timestamp: u64,
     pub width: u32,
     pub height: u32,
     pub compression: u8,
     pub device_name: String,
-    pub brand: String,
-    pub model: String,
-    pub device_id: u32,
-    pub fps: u8,
 
+    pub fps: Option<u8>,
+    pub brand: Option<String>,
+    pub model: Option<String>,
+    pub device_id: Option<String>,
+    pub serial_number: Option<u32>,
+    pub firmware_version: Option<String>,
     pub motion_config: Option<String>,
     pub preview_secs: Option<u8>,
     pub latitude: Option<f32>,
@@ -24,7 +28,63 @@ pub struct Cptv2Header {
     pub accuracy: Option<f32>,
 }
 
-//#[derive(Debug)]
+impl Cptv2Header {
+    pub fn new() -> Cptv2Header {
+        Cptv2Header {
+            timestamp: 0,
+            width: 0,
+            height: 0,
+            compression: 0,
+            device_name: "".to_string(),
+            fps: None,
+            brand: None,
+            model: None,
+            device_id: None,
+            serial_number: None,
+            firmware_version: None,
+            motion_config: None,
+            preview_secs: None,
+            latitude: None,
+            longitude: None,
+            loc_timestamp: None,
+            altitude: None,
+            accuracy: None,
+        }
+    }
+}
+//
+impl Debug for Cptv2Header {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Cptv2Header")
+            .field(
+                "timestamp",
+                &NaiveDateTime::from_timestamp((self.timestamp as f64 / 1000000.0) as i64, 0),
+            )
+            .field("width", &self.width)
+            .field("height", &self.height)
+            .field("compression", &self.compression)
+            .field("device_name", &self.device_name)
+            .field("fps", &self.fps)
+            .field("brand", &self.brand)
+            .field("model", &self.model)
+            .field("device_id", &self.device_id)
+            .field("serial_number", &self.serial_number)
+            .field("firmware_version", &self.firmware_version)
+            .field(
+                "motion_config",
+                &self.motion_config.as_ref().unwrap_or(&String::from("None")),
+            )
+            .field("preview_secs", &self.preview_secs)
+            .field("latitude", &self.latitude)
+            .field("longitude", &self.longitude)
+            .field("loc_timestamp", &self.loc_timestamp)
+            .field("altitude", &self.altitude)
+            .field("accuracy", &self.accuracy)
+            .finish()
+    }
+}
+
+#[derive(Debug)]
 pub struct Cptv3Header {
     pub v2: Cptv2Header,
     pub min_value: u16,
@@ -38,24 +98,7 @@ pub struct Cptv3Header {
 impl Cptv3Header {
     pub fn new() -> Cptv3Header {
         Cptv3Header {
-            v2: Cptv2Header {
-                timestamp: 0,
-                width: 0,
-                height: 0,
-                compression: 0,
-                fps: 9,
-                device_name: "".to_string(),
-                brand: "".to_string(),
-                model: "".to_string(),
-                device_id: 0,
-                motion_config: None,
-                preview_secs: None,
-                latitude: None,
-                longitude: None,
-                loc_timestamp: None,
-                altitude: None,
-                accuracy: None,
-            },
+            v2: Cptv2Header::new(),
             min_value: 0,
             max_value: 0,
             toc: Vec::new(),
@@ -67,11 +110,11 @@ impl Cptv3Header {
 }
 
 #[derive(Clone, Copy)]
-pub struct FrameData([[i16; 160]; 120]);
+pub struct FrameData([[u16; 160]; 120]);
 
 impl FrameData {
     pub fn empty() -> FrameData {
-        FrameData([[0i16; 160]; 120])
+        FrameData([[0u16; 160]; 120])
     }
 
     pub fn width(&self) -> usize {
@@ -85,14 +128,16 @@ impl FrameData {
     pub fn as_slice(&self) -> &[u8] {
         unsafe {
             std::slice::from_raw_parts(
-                &self[0] as *const i16 as *const u8,
+                &self[0] as *const u16 as *const u8,
                 std::mem::size_of_val(self),
             )
         }
     }
 
-    pub fn as_values(&self) -> &[i16] {
-        unsafe { std::slice::from_raw_parts(&self[0] as *const i16, std::mem::size_of_val(self)) }
+    pub fn as_values(&self) -> &[u16] {
+        unsafe {
+            std::slice::from_raw_parts(&self[0] as *const u16, std::mem::size_of_val(self) / 2)
+        }
     }
 
     pub fn offset(&self, offset: usize) -> FrameData {
@@ -100,7 +145,7 @@ impl FrameData {
         let mut pixels = self.as_values().iter().skip(offset);
         for y in 0..frame.height() {
             for x in 0..frame.width() {
-                let pixel = *pixels.next().unwrap_or(&0i16);
+                let pixel = *pixels.next().unwrap_or(&0u16);
                 //assert!(pixel >= 0);
                 frame[y][x] = pixel;
             }
@@ -110,7 +155,7 @@ impl FrameData {
 }
 
 impl Index<usize> for FrameData {
-    type Output = [i16; 160];
+    type Output = [u16; 160];
 
     fn index(&self, index: usize) -> &Self::Output {
         &self.0[index]
@@ -181,8 +226,9 @@ impl FrameHeader {
 }
 
 #[repr(u8)]
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 pub enum FieldType {
+    // K remaining
     Header = b'H',
     Timestamp = b'T',
     Width = b'X',
@@ -196,13 +242,19 @@ pub enum FieldType {
     LocTimestamp = b'S',
     Altitude = b'A',
     Accuracy = b'U',
+    Model = b'E',
+    Brand = b'B',
+    DeviceID = b'I',
+    FirmwareVersion = b'V',
+    CameraSerial = b'N',
+    FrameRate = b'Z',
 
-    MinValue = b'V',
+    // TODO: Other header fields I've added to V2
+    MinValue = b'R',
     MaxValue = b'W',
     TableOfContents = b'Q',
-    NumFrames = b'N',
-    FrameRate = b'R',
-    FramesPerIframe = b'I',
+    NumFrames = b'J',
+    FramesPerIframe = b'G',
     FrameHeader = b'F',
 
     PixelBytes = b'w',
@@ -222,6 +274,9 @@ impl From<u8> for FieldType {
             b'Y' => Height,
             b'C' => Compression,
             b'D' => DeviceName,
+            b'E' => Model,
+            b'B' => Brand,
+            b'I' => DeviceID,
             b'M' => MotionConfig,
             b'P' => PreviewSecs,
             b'L' => Latitude,
@@ -229,12 +284,14 @@ impl From<u8> for FieldType {
             b'S' => LocTimestamp,
             b'A' => Altitude,
             b'U' => Accuracy,
-            b'V' => MinValue,
+            b'R' => MinValue,
             b'W' => MaxValue,
+            b'N' => CameraSerial,
+            b'V' => FirmwareVersion,
             b'Q' => TableOfContents,
-            b'N' => NumFrames,
-            b'R' => FrameRate,
-            b'I' => FramesPerIframe,
+            b'J' => NumFrames,
+            b'Z' => FrameRate,
+            b'G' => FramesPerIframe,
             b'F' => FrameHeader,
             b'w' => PixelBytes,
             b'f' => FrameSize,
@@ -319,7 +376,8 @@ pub fn predict_left(data: &FrameData, x: usize, y: usize) -> i16 {
     } else {
         data[y - 1][x + 1]
     };
-    average_2(average_2(left, top_left), average_2(top, top_right))
+    //average_2(average_2(left, top_left), average_2(top, top_right))
+    0
 }
 
 pub fn predict_right(data: &FrameData, x: usize, y: usize) -> i16 {
@@ -343,5 +401,6 @@ pub fn predict_right(data: &FrameData, x: usize, y: usize) -> i16 {
     } else {
         data[y - 1][x + 1]
     };
-    average_2(average_2(right, top_left), average_2(top, top_right))
+    //average_2(average_2(right, top_left), average_2(top, top_right))
+    0
 }
