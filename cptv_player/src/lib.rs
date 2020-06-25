@@ -103,7 +103,7 @@ fn decode_zstd_blocks(meta: &Cptv3Header, remaining: &[u8]) -> Vec<Vec<u8>> {
     decoded_zstd_blocks
 }
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = initBufferWithSize)]
 pub fn init_buffer_with_size(size: usize) -> Result<(), JsValue> {
     // Init the console logging stuff on startup, so that wasm can print things
     // into the browser console.
@@ -116,7 +116,7 @@ pub fn init_buffer_with_size(size: usize) -> Result<(), JsValue> {
     Ok(())
 }
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = insertChunkAtOffset)]
 pub fn insert_chunk_at_offset(chunk: &[u8], offset: usize) -> Result<(), JsValue> {
     RAW_FILE_DATA.with(|x| {
         let range = offset..offset + chunk.len();
@@ -137,7 +137,7 @@ extern "C" {
     fn cancel_loading();
 }
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = initWithCptvData)]
 pub fn init_with_cptv_data(input: &[u8]) -> Result<(), JsValue> {
     console_error_panic_hook::set_once();
     let _ = console_log::init_with_level(Level::Debug);
@@ -182,7 +182,7 @@ pub fn init_with_cptv_data(input: &[u8]) -> Result<(), JsValue> {
     Ok(())
 }
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = getNumFrames)]
 pub fn get_num_frames() -> u32 {
     CLIP_INFO.with(|x| {
         let header = &*x.borrow();
@@ -194,7 +194,7 @@ pub fn get_num_frames() -> u32 {
     })
 }
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = getWidth)]
 pub fn get_width() -> u32 {
     CLIP_INFO.with(|x| {
         let header = &*x.borrow();
@@ -206,7 +206,7 @@ pub fn get_width() -> u32 {
     })
 }
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = getHeight)]
 pub fn get_height() -> u32 {
     CLIP_INFO.with(|x| {
         let header = &*x.borrow();
@@ -218,7 +218,7 @@ pub fn get_height() -> u32 {
     })
 }
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = getFrameRate)]
 pub fn get_frame_rate() -> u8 {
     CLIP_INFO.with(|x| {
         let header = &*x.borrow();
@@ -230,7 +230,7 @@ pub fn get_frame_rate() -> u8 {
     })
 }
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = getFramesPerIframe)]
 pub fn get_frames_per_iframe() -> u8 {
     CLIP_INFO.with(|x| {
         let header = &*x.borrow();
@@ -242,7 +242,7 @@ pub fn get_frames_per_iframe() -> u8 {
     })
 }
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = getMinValue)]
 pub fn get_min_value() -> u16 {
     CLIP_INFO.with(|x| {
         let header = &*x.borrow();
@@ -254,7 +254,7 @@ pub fn get_min_value() -> u16 {
     })
 }
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = getMaxValue)]
 pub fn get_max_value() -> u16 {
     CLIP_INFO.with(|x| {
         let header = &*x.borrow();
@@ -266,7 +266,7 @@ pub fn get_max_value() -> u16 {
     })
 }
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = getHeader)]
 pub fn get_header() -> JsValue {
     CLIP_INFO.with(|x| {
         let header = &*x.borrow();
@@ -278,7 +278,7 @@ pub fn get_header() -> JsValue {
     })
 }
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = queueFrame)]
 pub fn queue_frame(number: u32, callback: JsValue) -> bool {
     // Scrub to frame `number`.
     // If we have loaded everything, just return true.
@@ -299,6 +299,59 @@ pub fn queue_frame(number: u32, callback: JsValue) -> bool {
     });
     // cancel_loading();
     true
+}
+
+fn get_raw_frame_v2(number: u32, image_data: &mut [u8]) -> bool {
+    let mut has_next_frame = false;
+    IFRAME_BLOCKS.with(|data| {
+        // We only use the first block for V2
+        let offset = PLAYBACK_INFO.with(|info| {
+            let info = &*info.borrow();
+            info.offset_in_block
+        });
+        let block = &data.borrow()[0];
+        //info!("Get frame {}", number);
+        // Read the frame out of the data:
+
+        FRAME_BUFFER.with(|prev_frame| {
+            let frame = {
+                assert!(
+                    offset <= block.len(),
+                    "Offset is wrong {} vs {}",
+                    offset,
+                    block.len()
+                );
+                if let Ok((remaining, frame)) =
+                    decode_frame_v2(&prev_frame.borrow(), &block[offset..])
+                {
+                    image_data.copy_from_slice(frame.image_data.as_slice());
+                    Some((remaining, frame))
+                } else {
+                    None
+                }
+            };
+            if let Some((remaining, frame)) = frame {
+                PLAYBACK_INFO.with(|info| {
+                    let mut info = info.borrow_mut();
+                    assert!(block.len() > remaining.len());
+                    let offset = block.len() - remaining.len();
+                    info.offset_in_block = usize::min(block.len(), offset);
+                    info.prev_block = 0;
+                    let next_frame = number + 1;
+                    info.prev_frame = next_frame as usize;
+                });
+                has_next_frame = true;
+                *prev_frame.borrow_mut() = frame;
+            } else {
+                *prev_frame.borrow_mut() = CptvFrame::new();
+                PLAYBACK_INFO.with(|info| {
+                    let mut info = info.borrow_mut();
+                    info.offset_in_block = 0;
+                });
+            }
+        });
+    });
+    has_next_frame
 }
 
 fn get_frame_v2(number: u32, image_data: &mut [u8]) -> bool {
@@ -448,7 +501,7 @@ fn get_frame_v3(number: u32, image_data: &mut [u8]) -> bool {
     true
 }
 
-#[wasm_bindgen]
+#[wasm_bindgen(js_name = getFrame)]
 pub fn get_frame(number: u32, image_data: &mut [u8]) -> bool {
     CLIP_INFO.with(|meta| {
         let meta = &*meta.borrow();
@@ -456,6 +509,17 @@ pub fn get_frame(number: u32, image_data: &mut [u8]) -> bool {
             CptvHeader::V2(_) => get_frame_v2(number, image_data),
             CptvHeader::V3(_) => get_frame_v3(number, image_data),
             CptvHeader::UNINITIALISED => false,
+        }
+    })
+}
+
+#[wasm_bindgen(js_name = getRawFrame)]
+pub fn get_raw_frame(number: u32, image_data: &mut [u8]) -> bool {
+    CLIP_INFO.with(|meta| {
+        let meta = &*meta.borrow();
+        match meta {
+            CptvHeader::V2(_) => get_raw_frame_v2(number, image_data),
+            _ => false,
         }
     })
 }
