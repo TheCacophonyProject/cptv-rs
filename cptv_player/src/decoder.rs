@@ -292,7 +292,7 @@ pub fn decode_frame<'a>(
         }
     }
     assert!(frame.frame_size > 0);
-    let (i, data) = take(frame.frame_size as usize)(outer)?;
+    let (i, _) = take(frame.frame_size as usize)(outer)?;
     //copy_frame_data(data, &mut frame)?;
     unpack_frame(prev_frame, &mut frame, is_iframe);
     Ok((i, frame))

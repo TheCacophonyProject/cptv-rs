@@ -2,23 +2,25 @@ use crate::decoder::{
     decode_cptv_header, decode_frame, decode_frame_v2, get_dynamic_range, CptvHeader,
 };
 use cptv_common::{Cptv2Header, Cptv3Header, CptvFrame};
+use js_sys::Uint8Array;
 use libflate::gzip::Decoder;
 use log::Level;
 #[allow(unused)]
 use log::{info, trace, warn};
+use ruzstd::frame_decoder;
+use std::alloc::System;
 use std::cell::RefCell;
 use std::io::Read;
 use std::ops::Range;
 use wasm_bindgen::__rt::std::io::Cursor;
-use wasm_bindgen::convert::ReturnWasmAbi;
 use wasm_bindgen::prelude::*;
-use zstd_rs::frame_decoder;
+//use wasm_tracing_allocator::WasmTracingAllocator;
 
 mod decoder;
 
 // The global allocator used by wasm code
-#[global_allocator]
-static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
+// #[global_allocator]
+// static ALLOC: wasm_tracing_allocator::WasmTracingAllocator<System> = WasmTracingAllocator(System);
 
 struct PlaybackInfo {
     offset_in_block: usize,
@@ -49,6 +51,8 @@ impl DownloadedData {
     }
 }
 
+// TODO(jon): Make this multi-threaded in wasm, so you can run multiple versions concurrently?
+
 thread_local! {
     static RAW_FILE_DATA: RefCell<DownloadedData> = RefCell::new(DownloadedData::new());
 }
@@ -65,10 +69,6 @@ thread_local! {
 
 thread_local! {
     static PLAYBACK_INFO: RefCell<PlaybackInfo> = RefCell::new(PlaybackInfo::new());
-}
-
-fn decode_zlib_blocks(meta: &Cptv2Header, remaining: &[u8]) -> Vec<Vec<u8>> {
-    Vec::new()
 }
 
 fn decode_zstd_blocks(meta: &Cptv3Header, remaining: &[u8]) -> Vec<Vec<u8>> {
@@ -138,48 +138,52 @@ extern "C" {
 }
 
 #[wasm_bindgen(js_name = initWithCptvData)]
-pub fn init_with_cptv_data(input: &[u8]) -> Result<(), JsValue> {
+pub fn init_with_cptv_data(input: &[u8]) -> Result<JsValue, JsValue> {
     console_error_panic_hook::set_once();
     let _ = console_log::init_with_level(Level::Debug);
-    // See if the input is gzip encoded:
-    let mut decoded = Vec::new();
-    let input = if input[0] == 0x1f && input[1] == 0x8b {
-        // It's a gzipped stream.
-        let mut gz_decoder = Decoder::new(&input[..]).unwrap();
-        gz_decoder.read_to_end(&mut decoded).unwrap();
-        &decoded
-    } else {
-        input
-    };
+    if input.len() > 0 {
+        // See if the input is gzip encoded:
+        let mut decoded = Vec::new();
+        let input = if input[0] == 0x1f && input[1] == 0x8b {
+            // It's a gzipped stream.
+            let mut gz_decoder = Decoder::new(&input[..]).unwrap();
+            gz_decoder.read_to_end(&mut decoded).unwrap();
+            &decoded
+        } else {
+            input
+        };
 
-    FRAME_BUFFER.with(|prev_frame| {
-        *prev_frame.borrow_mut() = CptvFrame::new();
-    });
-    // TODO(jon): Calculate how much we need to buffer in order to stream, and keep adjusting that estimate.
-    if let Ok((remaining, meta)) = decode_cptv_header(&input) {
-        match &meta {
-            CptvHeader::V3(meta) => {
-                let range_degrees_c = 150.0;
-                let max_val = 16384;
-                let min = meta.min_value as f64;
-                let max = meta.max_value as f64;
-                let f = range_degrees_c / max_val as f64;
-                let min_c = -10.0 + (f * min);
-                let max_c = -10.0 + (f * max);
-                //info!("temp {}C - {}c", min_c, max_c);
+        FRAME_BUFFER.with(|prev_frame| {
+            *prev_frame.borrow_mut() = CptvFrame::new();
+        });
+        // TODO(jon): Calculate how much we need to buffer in order to stream, and keep adjusting that estimate.
+        if let Ok((remaining, meta)) = decode_cptv_header(&input) {
+            match &meta {
+                CptvHeader::V3(meta) => {
+                    let range_degrees_c = 150.0;
+                    let max_val = 16384;
+                    let min = meta.min_value as f64;
+                    let max = meta.max_value as f64;
+                    let f = range_degrees_c / max_val as f64;
+                    let min_c = -10.0 + (f * min);
+                    let max_c = -10.0 + (f * max);
+                    //info!("temp {}C - {}c", min_c, max_c);
 
-                let zstd_blocks = decode_zstd_blocks(&meta, remaining);
-                IFRAME_BLOCKS.with(|x| *x.borrow_mut() = zstd_blocks);
+                    let zstd_blocks = decode_zstd_blocks(&meta, remaining);
+                    IFRAME_BLOCKS.with(|x| *x.borrow_mut() = zstd_blocks);
+                }
+                CptvHeader::V2(_) => {
+                    IFRAME_BLOCKS.with(|x| *x.borrow_mut() = vec![remaining.to_vec()]);
+                }
+                _ => panic!("uninitialised"),
             }
-            CptvHeader::V2(_) => {
-                IFRAME_BLOCKS.with(|x| *x.borrow_mut() = vec![remaining.to_vec()]);
-            }
-            _ => panic!("uninitialised"),
+            CLIP_INFO.with(|x| *x.borrow_mut() = meta);
+            PLAYBACK_INFO.with(|x| *x.borrow_mut() = PlaybackInfo::new());
         }
-        CLIP_INFO.with(|x| *x.borrow_mut() = meta);
-        PLAYBACK_INFO.with(|x| *x.borrow_mut() = PlaybackInfo::new());
+        Ok(JsValue::from_bool(true))
+    } else {
+        Err(JsValue::from_bool(false))
     }
-    Ok(())
 }
 
 #[wasm_bindgen(js_name = getNumFrames)]
@@ -301,8 +305,22 @@ pub fn queue_frame(number: u32, callback: JsValue) -> bool {
     true
 }
 
-fn get_raw_frame_v2(number: u32, image_data: &mut [u8]) -> bool {
-    let mut has_next_frame = false;
+#[wasm_bindgen]
+pub struct FrameHeaderV2 {
+    pub time_on: u32,
+    pub last_ffc_time: u32,
+    pub frame_number: u32,
+    pub has_next_frame: bool,
+}
+
+fn get_raw_frame_v2(image_data: &mut [u8]) -> FrameHeaderV2 {
+    let mut frame_header = FrameHeaderV2 {
+        time_on: 0,
+        last_ffc_time: 0,
+        frame_number: 0,
+        has_next_frame: false,
+    };
+
     IFRAME_BLOCKS.with(|data| {
         // We only use the first block for V2
         let offset = PLAYBACK_INFO.with(|info| {
@@ -337,21 +355,24 @@ fn get_raw_frame_v2(number: u32, image_data: &mut [u8]) -> bool {
                     let offset = block.len() - remaining.len();
                     info.offset_in_block = usize::min(block.len(), offset);
                     info.prev_block = 0;
-                    let next_frame = number + 1;
-                    info.prev_frame = next_frame as usize;
+                    frame_header.last_ffc_time = frame.last_ffc_time;
+                    frame_header.time_on = frame.time_on;
+                    frame_header.frame_number = info.prev_frame as u32;
+                    info.prev_frame += 1;
                 });
-                has_next_frame = true;
                 *prev_frame.borrow_mut() = frame;
             } else {
                 *prev_frame.borrow_mut() = CptvFrame::new();
                 PLAYBACK_INFO.with(|info| {
                     let mut info = info.borrow_mut();
+                    // Restart playback at the beginning.
                     info.offset_in_block = 0;
+                    info.prev_frame = 0;
                 });
             }
         });
     });
-    has_next_frame
+    frame_header
 }
 
 fn get_frame_v2(number: u32, image_data: &mut [u8]) -> bool {
@@ -514,12 +535,12 @@ pub fn get_frame(number: u32, image_data: &mut [u8]) -> bool {
 }
 
 #[wasm_bindgen(js_name = getRawFrame)]
-pub fn get_raw_frame(number: u32, image_data: &mut [u8]) -> bool {
+pub fn get_raw_frame(image_data: &mut [u8]) -> FrameHeaderV2 {
     CLIP_INFO.with(|meta| {
         let meta = &*meta.borrow();
         match meta {
-            CptvHeader::V2(_) => get_raw_frame_v2(number, image_data),
-            _ => false,
+            CptvHeader::V2(_) => get_raw_frame_v2(image_data),
+            _ => unreachable!(),
         }
     })
 }

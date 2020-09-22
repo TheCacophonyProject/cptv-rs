@@ -206,19 +206,29 @@ pub struct Cptv3 {
 //        write!(f, "CPTV file with {} frames", self.frames.len())
 //    }
 //}
-
-pub struct FrameHeader {
+pub struct FrameHeaderV3 {
     length: u32,
     time_on: u32,
     last_ffc_time: u32,
     pixel_size: u8,
 }
 
-impl FrameHeader {
+impl Default for FrameHeaderV3 {
+    fn default() -> Self {
+        FrameHeaderV3 {
+            length: 0,
+            time_on: 0,
+            last_ffc_time: 0,
+            pixel_size: 0,
+        }
+    }
+}
+
+impl FrameHeaderV3 {
     pub fn as_slice(&self) -> &[u8] {
         unsafe {
             std::slice::from_raw_parts(
-                self as *const FrameHeader as *const u8,
+                self as *const FrameHeaderV3 as *const u8,
                 std::mem::size_of_val(self),
             )
         }
