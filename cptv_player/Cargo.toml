@@ -13,8 +13,10 @@ crate-type = ["cdylib"]
 # call into wasm code from JS.
 wasm-bindgen = "0.2.54"
 
+#wasm-tracing-allocator = "0.1.1"
+
 # This is the allocator that wasm requires to work with rust.
-wee_alloc = "0.4.5"
+#wee_alloc = "0.4.5"
 
 # Routing messages to the JS error console
 console_log = "0.1.2"
@@ -32,3 +34,7 @@ libflate = "1.0.1"
 
 [dependencies.cptv_common]
 path = "../cptv_common"
+
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false

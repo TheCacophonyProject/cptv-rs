@@ -6,6 +6,8 @@ members = [
 	"cptv_common"
 ]
 [profile.release]
-lto = true
+#lto = true
 opt-level='s'
-panic = "abort"
+#panic = "abort"
+#opt-level = 3
+debug = true
