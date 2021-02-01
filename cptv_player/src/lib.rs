@@ -6,13 +6,13 @@ use libflate::gzip::Decoder;
 use log::Level;
 #[allow(unused)]
 use log::{info, trace, warn};
+use ruzstd::frame_decoder;
 use std::cell::RefCell;
 use std::io::Read;
 use std::ops::Range;
 use wasm_bindgen::__rt::std::io::Cursor;
 use wasm_bindgen::convert::ReturnWasmAbi;
 use wasm_bindgen::prelude::*;
-use zstd_rs::frame_decoder;
 
 mod decoder;
 

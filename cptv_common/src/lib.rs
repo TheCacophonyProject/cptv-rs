@@ -3,6 +3,8 @@
 //use std::fmt::{Error, Formatter};
 use chrono::{NaiveDate, NaiveDateTime};
 use core::fmt;
+#[allow(unused)]
+use log::{info, trace, warn};
 use std::fmt::{Debug, Formatter};
 use std::ops::{Index, IndexMut};
 
@@ -140,6 +142,17 @@ impl FrameData {
         }
     }
 
+    pub fn blocks_hilbertian() -> BlocksHilbertianIter {
+        // TODO(jon): 8x8 blocks that follow some kind of zig-zag hilbert-like pattern.
+        // Then we do predictive delta coding on them.
+        // Or could be 4x4? or 8x8 in 4x4 pieces?
+        BlocksHilbertianIter {}
+    }
+
+    pub fn blocks<'a>(&self) -> BlocksIter {
+        BlocksIter::new(&self)
+    }
+
     pub fn offset(&self, offset: usize) -> FrameData {
         let mut frame = FrameData::empty();
         let mut pixels = self.as_values().iter().skip(offset);
@@ -151,6 +164,46 @@ impl FrameData {
             }
         }
         frame
+    }
+}
+
+pub struct BlocksHilbertianIter {}
+
+pub struct BlocksIter<'a> {
+    index: usize,
+    data: &'a FrameData,
+}
+
+impl<'a> BlocksIter<'a> {
+    pub fn new(data: &'a FrameData) -> BlocksIter<'a> {
+        BlocksIter { index: 0, data }
+    }
+}
+
+impl<'a> Iterator for BlocksIter<'a> {
+    type Item = [u16; 64];
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let max_index = 300usize; // 20 x 15 blocks
+        if self.index < max_index {
+            let mut block = [0u16; 64];
+            // Copy from data...
+            let offset_x = self.index % 20;
+            let offset_y = self.index / 20;
+
+            let values = self.data.as_values();
+
+            for y in 0..8 {
+                let block_start_index = ((offset_y * 8 + y) * 160) + (offset_x * 8);
+                let slice = &values[block_start_index..block_start_index + 8];
+                &block[(y * 8)..((y * 8) + 8)].copy_from_slice(&slice);
+            }
+
+            self.index += 1;
+            Some(block)
+        } else {
+            None
+        }
     }
 }
 
@@ -351,8 +404,8 @@ impl ClipHeader {
 }
 
 #[inline(always)]
-fn average_2(a: i16, b: i16) -> i16 {
-    (a + b) / 2
+fn average_2(a: i32, b: i32) -> i16 {
+    ((a + b) / 2) as i16
 }
 
 pub fn predict_left(data: &FrameData, x: usize, y: usize) -> i16 {
@@ -376,8 +429,11 @@ pub fn predict_left(data: &FrameData, x: usize, y: usize) -> i16 {
     } else {
         data[y - 1][x + 1]
     };
-    //average_2(average_2(left, top_left), average_2(top, top_right))
-    0
+    average_2(
+        average_2(left as i32, top_left as i32) as i32,
+        average_2(top as i32, top_right as i32) as i32,
+    )
+    //0
 }
 
 pub fn predict_right(data: &FrameData, x: usize, y: usize) -> i16 {
@@ -401,6 +457,9 @@ pub fn predict_right(data: &FrameData, x: usize, y: usize) -> i16 {
     } else {
         data[y - 1][x + 1]
     };
-    //average_2(average_2(right, top_left), average_2(top, top_right))
-    0
+    average_2(
+        average_2(right as i32, top_left as i32) as i32,
+        average_2(top as i32, top_right as i32) as i32,
+    )
+    //0
 }

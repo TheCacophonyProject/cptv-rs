@@ -240,7 +240,7 @@ pub fn decode_frame_v2<'a>(
             }
             _ => {
                 //std::process::abort();
-                warn!("Unknown frame field type {:x}", field_code);
+                warn!("Unknown frame field type '{}'", field_code as char);
             }
         }
     }

@@ -8,6 +8,8 @@ use libflate::gzip::Encoder;
 use libflate::gzip::{Decoder, EncodeOptions};
 use libflate::lz77::DefaultLz77Encoder;
 use libflate::zlib::Lz77WindowSize;
+#[allow(unused)]
+use log::{info, trace, warn};
 use nom::number::complete::{le_f32, le_u32, le_u64, le_u8};
 use nom::{bytes::complete::*, Err};
 use std::collections::HashMap;
@@ -19,24 +21,31 @@ use std::path::Path;
 use std::{fmt, fs};
 
 fn main() -> std::result::Result<(), std::boxed::Box<dyn std::error::Error>> {
+    env_logger::init();
     // 20190922-021028
     // 20190922-021916
     //let input_name = "20191016-223709";
     // let input_name = "20191020-062935";
     //let input_name = "20200317-222551";
-    let input_name = "20200525.134708.107";
+    //let input_name = "20200525.134708.107";
+    let input_name = "20201118-060646";
+    let input_name = "wallabys-20201008-000650";
+    let input_name = "wallabys-20201008-004117";
+    let input_name = "bunny_20201125-060544";
+    let input_name = "reasonably-static-20201216-060355";
     //let input_name = "20190922-021028";
     match fs::read(format!("{}.cptv", input_name)) {
         Ok(input) => {
-            println!("Input size {}", input.len());
+            info!("Input size {}", input.len());
             let mut gz_decoder = Decoder::new(&input[..])?;
             let mut decoded = Vec::new();
             gz_decoder.read_to_end(&mut decoded)?;
+            let raw_len = decoded.len();
             match decode_cptv(&decoded) {
                 Ok((_, cptv)) => {
                     // TODO(jon): Fix offset artifact issues.
                     //dump_png_frames(&cptv);
-                    try_compression(&cptv, &input_name);
+                    try_compression(&cptv, &input_name, input.len(), raw_len);
                 }
                 Err(Err::Error((remaining, e))) => {
                     println!("err {:?}, remaining {}", e, remaining.len())
@@ -53,6 +62,7 @@ fn main() -> std::result::Result<(), std::boxed::Box<dyn std::error::Error>> {
     }
 }
 
+// TODO(jon): Why isn't this using the decoder::decode_cptv2_header function?
 fn decode_header(i: &[u8]) -> nom::IResult<&[u8], Cptv2Header> {
     let mut meta = Cptv2Header {
         timestamp: 0,
@@ -81,15 +91,15 @@ fn decode_header(i: &[u8]) -> nom::IResult<&[u8], Cptv2Header> {
     let (i, _) = tag(b"H")(i)?;
     let (i, num_header_fields) = le_u8(i)?;
 
-    dbg!(num_header_fields);
+    //dbg!(num_header_fields);
     let mut outer = i;
     for _ in 0..num_header_fields as usize {
         let (i, field_length) = le_u8(outer)?;
         let (i, field) = le_u8(i)?;
         let (i, val) = take(field_length)(i)?;
         outer = i;
-        dbg!(field_length);
-        dbg!(format!("{:?}", field as char));
+        // dbg!(field_length);
+        // dbg!(format!("{:?}", field as char));
         match field {
             b'T' => {
                 meta.timestamp = le_u64(val)?.1;
@@ -105,7 +115,6 @@ fn decode_header(i: &[u8]) -> nom::IResult<&[u8], Cptv2Header> {
             }
             b'D' => {
                 meta.device_name = String::from_utf8_lossy(val).into();
-                dbg!(&meta.device_name);
             }
 
             // Optional fields
@@ -138,12 +147,17 @@ fn decode_header(i: &[u8]) -> nom::IResult<&[u8], Cptv2Header> {
             }
             b'B' => {
                 meta.brand = Some(String::from_utf8_lossy(val).into());
-                dbg!(&meta.brand);
             }
             b'Z' => {
                 meta.fps = Some(le_u8(val)?.1);
             }
-            x => panic!("Unknown header field type {}", x),
+            // b'N' => {
+            //     // TODO(jon)
+            // }
+            // b'V' => {
+            //     // TODO(jon)
+            // }
+            x => warn!("Unknown header field type {}", x as char),
         }
     }
     Ok((outer, meta))
@@ -214,7 +228,7 @@ fn decode_image_data(
     };
     // Seed the initial pixel value
     assert!(prev_px as i32 + current_px <= std::i16::MAX as i32);
-    frame.image_data[0][0] = (prev_px as i32 + current_px) as i16;
+    frame.image_data[0][0] = (prev_px as i32 + current_px) as u16;
     for (index, delta) in BitUnpacker::new(i, frame.bit_width)
         .take((width * height) - 1)
         .enumerate()
@@ -230,7 +244,7 @@ fn decode_image_data(
             0
         };
         assert!(prev_px as i32 + current_px <= std::i16::MAX as i32);
-        frame.image_data[y][x] = (prev_px as i32 + current_px) as i16;
+        frame.image_data[y][x] = (prev_px as i32 + current_px) as u16;
     }
 }
 
@@ -268,7 +282,16 @@ fn decode_frame<'a>(
             b'c' => {
                 frame.last_ffc_time = le_u32(val)?.1;
             }
-            x => panic!("Unknown frame field type {}", x),
+            b'a' => {
+                // TODO(jon)
+            }
+            b'b' => {
+                // TODO(jon)
+            }
+            x => panic!(
+                "Unknown frame field type '{}'",
+                String::from_utf8_lossy(&[x])
+            ),
         }
     }
     assert!(frame.frame_size > 0);
@@ -329,8 +352,9 @@ fn get_dynamic_range(frame: &FrameData) -> RangeInclusive<i16> {
         .take(frame.width() * frame.height() - 36)
     // NOTE(jon): Offset
     {
-        frame_max = i16::max(*val, frame_max);
-        frame_min = i16::min(*val, frame_min);
+        assert!((*val as i16) < std::i16::MAX);
+        frame_max = i16::max(*val as i16, frame_max);
+        frame_min = i16::min(*val as i16, frame_min);
     }
     frame_min..=frame_max
 }
@@ -344,7 +368,7 @@ fn dump_png_frames(cptv: &Cptv2) {
         min = i16::min(*frame_range.start(), min);
         max = i16::max(*frame_range.end(), max);
     }
-    println!(
+    info!(
         "dynamic range across entire clip {:?}, range {}",
         min..=max,
         (min..max).len()
@@ -449,14 +473,14 @@ fn predictor_average_2(a: i16, b: i16) -> i16 {
     (a + b) / 2
 }
 
-fn try_compression(cptv: &Cptv2, file_name: &str) {
+fn try_compression(cptv: &Cptv2, file_name: &str, input_len: usize, raw_len: usize) {
     let mut frames_size = 0;
     let seconds_between_iframes = 5;
     let i_frame_interval = 9 * seconds_between_iframes;
     let mut delta_frames = Vec::new();
-    //let delta_fn = delta_compress_identity;
-    let delta_fn = delta_compress_frame_snaking; //delta_compress_lines_with_prediction;
-                                                 //let iframe_fn = delta_compress_lines_with_prediction;
+    let delta_fn = delta_compress_identity;
+    //let delta_fn = delta_compress_frame_snaking; //delta_compress_lines_with_prediction;
+    //let iframe_fn = delta_compress_lines_with_prediction;
     let mut num_iframes = 0;
 
     // Dynamic range:
@@ -468,19 +492,65 @@ fn try_compression(cptv: &Cptv2, file_name: &str) {
         min = i16::min(*frame_range.start(), min);
         max = i16::max(*frame_range.end(), max);
     }
+
+    // IDEA: The first "frame" of each block should be a composite image representing the median pixel values of the block.
+    // Each set of subsequent frames would have the values as they deviate from this median.  Would average be better?
+
+    // IDEA: For a block of pixels, would it help to shuffle the MSBs to all be next to each other,
+    // Then have the LSBs next to each other?  Then delta encode both of these separately?
+    // This could probably be sped up with various shuffle instructions?
+
+    // IDEA: Should we make the iframe chunks a fixed number of frames, or aim for a target average size instead?
+
+    // TRY: Adaptive delta coding with escape codes.
+    // Also, if we know the frame min, we could subtract that first from all values, so we're dealing with lower values?
+
+    // TRY: BWT + MTF transformations.
+
+    // IDEA: See if we can model some prediction for pixel noise/change per frame, and then encode the difference from
+    // our prediction to reality?
+
+    let num_frames = cptv.frames.len();
+    info!("Num frames {}", num_frames);
+    let mut p = vec![0usize; 155];
+
     //let mut prev_frame = FrameData::empty();
     for (frame_index, frames) in cptv.frames.windows(2).enumerate() {
         let is_first_frame = frame_index == 0;
-
-        if is_first_frame {
-            // DO DCT:
-            // grab 8x8 blocks
-        }
 
         let is_i_frame = frame_index % i_frame_interval == 0;
 
         let frame_a = &frames[0];
         let frame_b = &frames[1];
+
+        p[frame_index] += frame_a.image_data[60][60] as usize;
+
+        if is_first_frame {
+            // DO DCT:
+            // grab 8x8 blocks
+            let mut first = true;
+            let d_f = delta_fn(&frame_a.image_data);
+            //info!("Input 0 {:?}", &d_f.as_values()[200..208]);
+            // for block in d_f.blocks() {
+            //     //info!("Got block");
+            //     use rustdct::DCTplanner;
+            //     use std::sync::Arc;
+            //     let mut output = vec![0.0f32; 64];
+            //     let mut input: Vec<f32> = block.iter().map(|x| *x as f32).collect();
+            //     if first {
+            //         info!("input pre {:?}", input);
+            //     }
+            //
+            //     let mut planner = DCTplanner::new();
+            //     let mut dct = planner.plan_dct2(64);
+            //     dct.process_dct2(&mut input, &mut output);
+            //     if first {
+            //         first = false;
+            //         info!("input {:?}", input);
+            //         info!("output {:?}", output);
+            //     }
+            // }
+        }
 
         // Delta between frames, then in frame?
         if is_first_frame {
@@ -509,6 +579,47 @@ fn try_compression(cptv: &Cptv2, file_name: &str) {
             pack_frame(&mut delta_frames, delta_fn(&d), &frame_b, false);
         }
     }
+
+    let mut mm = p.clone();
+    mm.sort();
+    let m = mm[p.len() / 2];
+
+    info!("Values {:#?}", p[p.len() / 2]);
+    info!(
+        "offset from median {:#?}, energy {}, {:?}",
+        p.iter()
+            .map(|x| m as isize - *x as isize)
+            .collect::<Vec<_>>(),
+        p.iter().map(|x| m as isize - *x as isize).sum::<isize>(),
+        &p.windows(2)
+            .map(|a| (a[1] as isize - m as isize) - (a[0] as isize - m as isize))
+            .collect::<Vec<_>>(),
+    );
+
+    let average: isize = (p.iter().sum::<usize>() / p.len()) as isize;
+
+    info!(
+        "offset from average {:#?}, energy {}, {:?}",
+        p.iter().map(|x| *x as isize - average).collect::<Vec<_>>(),
+        p.iter().map(|x| *x as isize - average).sum::<isize>(),
+        &p.windows(2)
+            .map(|a| (a[1] as isize - average) - (a[0] as isize - average))
+            .collect::<Vec<_>>(),
+    );
+    info!(
+        "{:?}",
+        &p.windows(2)
+            .map(|a| (a[1] as isize) - (a[0] as isize))
+            .collect::<Vec<_>>()
+    );
+
+    info!("0b{:b}, 0b{:b}, 0b{:b}", 1i8, 0i8, -1i8);
+
+    // IDEA(jon): Intra-frame per-pixel RLE for each block?
+
+    // IDEA: What if we organise all the pixels in a block as a linear stream?  That would mean we
+    // can't start decoding a block until the whole thing has downloaded, but that is probably okay
+    // if blocks are short (9 frames, 1 second?)
 
     // NOTE(jon): Since we are only making it so you can go to the beginning of each iframe to start
     //  decode, we should also make the subsequent frames up until the next iframe part of the zstd
@@ -603,6 +714,12 @@ fn try_compression(cptv: &Cptv2, file_name: &str) {
     push_toc(&mut output, &iframe_offsets, FieldType::TableOfContents);
     output.extend_from_slice(&compressed_data);
     println!("All frames Zstd: {}", output.len());
+    println!(
+        "Ratio V2 -> V3 1:{}",
+        input_len as f32 / output.len() as f32
+    );
+    println!("Ratio Raw -> V2 1:{}", raw_len as f32 / input_len as f32);
+    println!("Ratio Raw -> V3 1:{}", raw_len as f32 / output.len() as f32);
     let mut file = File::create(format!("{}-v3.cptv", file_name)).unwrap();
     file.write_all(&output).unwrap();
     /*
@@ -706,15 +823,15 @@ fn predict_9x9(data: &FrameData, x: usize, y: usize) -> i16 {
         data[y + 1][x - 1]
     };
 
-    let p1 = predictor_average_2(left, top_left);
-    let p2 = predictor_average_2(top, top_right);
-    let p3 = predictor_average_2(right, bottom_right);
-    let p4 = predictor_average_2(bottom, bottom_left);
+    let p1 = predictor_average_2(left as i16, top_left as i16);
+    let p2 = predictor_average_2(top as i16, top_right as i16);
+    let p3 = predictor_average_2(right as i16, bottom_right as i16);
+    let p4 = predictor_average_2(bottom as i16, bottom_left as i16);
 
     let p5 = predictor_average_2(p1, p2);
     let p6 = predictor_average_2(p3, p4);
     let p7 = predictor_average_2(p5, p6);
-    predictor_average_2(p7, middle)
+    predictor_average_2(p7, middle as i16)
 }
 
 fn predict_average(data: &FrameData, x: usize, y: usize) -> i16 {
@@ -737,14 +854,14 @@ fn delta_compress_lines_with_prediction(data: &FrameData) -> FrameData {
     let mut enc = FrameData::empty();
     for y in 0..120 {
         for x in 0..160 {
-            enc[y][x] = data[y][x] - predict_left(&data, x, y);
+            enc[y][x] = ((data[y][x] as i16) - predict_left(&data, x, y)) as u16;
         }
     }
     // Verify delta encoding:
     let mut dec = FrameData::empty();
     for y in 0..120 {
         for x in 0..160 {
-            dec[y][x] = enc[y][x] + predict_left(&dec, x, y);
+            dec[y][x] = ((enc[y][x] as i16) + predict_left(&dec, x, y)) as u16;
         }
     }
     assert_eq!(data.as_slice(), dec.as_slice());
@@ -757,11 +874,11 @@ fn delta_compress_frame_snaking(data: &FrameData) -> FrameData {
         let is_odd = y % 2 == 0;
         if is_odd {
             for x in 0..160 {
-                enc[y][x] = data[y][x] - predict_left(&data, x, y);
+                enc[y][x] = ((data[y][x] as i16) - predict_left(&data, x, y)) as u16;
             }
         } else {
             for x in (0..160).rev() {
-                enc[y][x] = data[y][x] - predict_right(&data, x, y);
+                enc[y][x] = ((data[y][x] as i16) - predict_right(&data, x, y)) as u16;
             }
         }
     }
@@ -772,11 +889,11 @@ fn delta_compress_frame_snaking(data: &FrameData) -> FrameData {
         let is_odd = y % 2 == 0;
         if is_odd {
             for x in 0..160 {
-                dec[y][x] = enc[y][x] + predict_left(&dec, x, y);
+                dec[y][x] = ((enc[y][x] as i16) + predict_left(&dec, x, y)) as u16;
             }
         } else {
             for x in (0..160).rev() {
-                dec[y][x] = enc[y][x] + predict_right(&dec, x, y);
+                dec[y][x] = ((enc[y][x] as i16) + predict_right(&dec, x, y)) as u16;
             }
         }
     }
