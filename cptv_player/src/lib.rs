@@ -8,7 +8,6 @@ use log::Level;
 #[allow(unused)]
 use log::{info, trace, warn};
 use ruzstd::frame_decoder;
-use ruzstd::frame_decoder;
 use std::alloc::System;
 use std::cell::RefCell;
 use std::io::Read;

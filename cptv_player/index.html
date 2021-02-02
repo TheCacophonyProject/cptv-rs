@@ -63,7 +63,7 @@
   };
 
   function drawFrame() {
-    let hasNextFrame = cptvPlayer.get_frame(num, frame.data);
+    let hasNextFrame = cptvPlayer.getFrame(num, frame.data);
     if (hasNextFrame) {
       context.putImageData(frame, 0, 0);
       num++;
@@ -76,11 +76,11 @@
   }
 
   function loadBuffer(buffer) {
-      cptvPlayer.init_with_cptv_data(new Uint8Array(buffer));
-      headerInfo = cptvPlayer.get_header();
+      cptvPlayer.initWithCptvData(new Uint8Array(buffer));
+      headerInfo = cptvPlayer.getHeader();
       document.getElementById("header-info").innerText = headerInfo.replace(/\\n/g, "\n\t");
-      width = cptvPlayer.get_width();
-      height = cptvPlayer.get_height();
+      width = cptvPlayer.getWidth();
+      height = cptvPlayer.getHeight();
       //totalFrames = 1;//cptvPlayer.get_num_frames();
       canvas.width = width;
       canvas.height = height;
