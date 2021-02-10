@@ -418,7 +418,7 @@ fn pack_frame(frames: &mut Vec<Vec<u8>>, frame: FrameData, meta: &CptvFrame, is_
     push_field(&mut bytes, &4u8, FieldType::FrameHeader);
     push_field(
         &mut bytes,
-        &(120 * 160 * pixel_bytes as u32),
+        &(frame.width() * frame.height() * pixel_bytes as u32),
         FieldType::FrameSize,
     );
     // NOTE(jon): Frame size is technically redundant, as it will always be width * height * pixel_bytes
@@ -776,18 +776,18 @@ fn delta_compress_identity(data: &FrameData) -> FrameData {
 
 fn delta_compress_lines(data: &FrameData) -> FrameData {
     let mut enc = FrameData::empty();
-    for y in 0..120 {
+    for y in 0..data.height() {
         let mut prev = 0;
-        for x in 0..160 {
+        for x in 0..data.width() {
             enc[y][x] = data[y][x] - prev;
             prev = data[y][x];
         }
     }
     // Verify delta encoding:
     let mut dec = FrameData::empty();
-    for y in 0..120 {
+    for y in 0..data.height() {
         let mut prev = 0;
-        for x in 0..160 {
+        for x in 0..data.width() {
             dec[y][x] = enc[y][x] + prev;
             prev = dec[y][x];
         }
@@ -797,6 +797,8 @@ fn delta_compress_lines(data: &FrameData) -> FrameData {
 }
 
 fn predict_9x9(data: &FrameData, x: usize, y: usize) -> i16 {
+    let width = data.width();
+    let height = data.height();
     let left = if x == 0 { 0 } else { data[y][x - 1] };
     let top = if y == 0 { 0 } else { data[y - 1][x] };
     let top_left = if y == 0 || x == 0 {
@@ -804,20 +806,20 @@ fn predict_9x9(data: &FrameData, x: usize, y: usize) -> i16 {
     } else {
         data[y - 1][x - 1]
     };
-    let top_right = if x == 159 || y == 0 {
+    let top_right = if x == width - 1 || y == 0 {
         0
     } else {
         data[y - 1][x + 1]
     };
     let middle = data[y][x];
-    let right = if x == 159 { 0 } else { data[y][x + 1] };
-    let bottom_right = if x == 159 || y == 119 {
+    let right = if x == width - 1 { 0 } else { data[y][x + 1] };
+    let bottom_right = if x == width - 1 || y == height - 1  {
         0
     } else {
         data[y + 1][x + 1]
     };
-    let bottom = if y == 119 { 0 } else { data[y + 1][x] };
-    let bottom_left = if y == 119 || x == 0 {
+    let bottom = if y == height - 1 { 0 } else { data[y + 1][x] };
+    let bottom_left = if y == height - 1 || x == 0 {
         0
     } else {
         data[y + 1][x - 1]
@@ -837,12 +839,13 @@ fn predict_9x9(data: &FrameData, x: usize, y: usize) -> i16 {
 fn predict_average(data: &FrameData, x: usize, y: usize) -> i16 {
     let left = if x == 0 { 0 } else { data[y][x - 1] as isize };
     let top = if y == 0 { 0 } else { data[y - 1][x] as isize };
+    let width = data.width();
     let top_left = if y == 0 || x == 0 {
         0
     } else {
         data[y - 1][x - 1] as isize
     };
-    let top_right = if x == 159 || y == 0 {
+    let top_right = if x == width - 1 || y == 0 {
         0
     } else {
         data[y - 1][x + 1] as isize
@@ -852,15 +855,15 @@ fn predict_average(data: &FrameData, x: usize, y: usize) -> i16 {
 
 fn delta_compress_lines_with_prediction(data: &FrameData) -> FrameData {
     let mut enc = FrameData::empty();
-    for y in 0..120 {
-        for x in 0..160 {
+    for y in 0..data.height() {
+        for x in 0..data.width() {
             enc[y][x] = ((data[y][x] as i16) - predict_left(&data, x, y)) as u16;
         }
     }
     // Verify delta encoding:
     let mut dec = FrameData::empty();
-    for y in 0..120 {
-        for x in 0..160 {
+    for y in 0..data.height() {
+        for x in 0..data.width() {
             dec[y][x] = ((enc[y][x] as i16) + predict_left(&dec, x, y)) as u16;
         }
     }
@@ -870,14 +873,14 @@ fn delta_compress_lines_with_prediction(data: &FrameData) -> FrameData {
 
 fn delta_compress_frame_snaking(data: &FrameData) -> FrameData {
     let mut enc = FrameData::empty();
-    for y in 0..120 {
+    for y in 0..data.height() {
         let is_odd = y % 2 == 0;
         if is_odd {
-            for x in 0..160 {
+            for x in 0..data.width() {
                 enc[y][x] = ((data[y][x] as i16) - predict_left(&data, x, y)) as u16;
             }
         } else {
-            for x in (0..160).rev() {
+            for x in (0..data.width()).rev() {
                 enc[y][x] = ((data[y][x] as i16) - predict_right(&data, x, y)) as u16;
             }
         }
@@ -885,14 +888,14 @@ fn delta_compress_frame_snaking(data: &FrameData) -> FrameData {
 
     // Verify delta encoding:
     let mut dec = FrameData::empty();
-    for y in 0..120 {
+    for y in 0..data.height() {
         let is_odd = y % 2 == 0;
         if is_odd {
-            for x in 0..160 {
+            for x in 0..data.width() {
                 dec[y][x] = ((enc[y][x] as i16) + predict_left(&dec, x, y)) as u16;
             }
         } else {
-            for x in (0..160).rev() {
+            for x in (0..data.width()).rev() {
                 dec[y][x] = ((enc[y][x] as i16) + predict_right(&dec, x, y)) as u16;
             }
         }

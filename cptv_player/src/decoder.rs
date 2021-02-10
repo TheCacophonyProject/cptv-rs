@@ -1,6 +1,4 @@
-use cptv_common::{
-    predict_left, predict_right, Cptv2Header, Cptv3Header, CptvFrame, FieldType, FrameData,
-};
+use cptv_common::{predict_left, predict_right, Cptv2Header, Cptv3Header, CptvFrame, FieldType, FrameData, WIDTH, HEIGHT};
 #[allow(unused)]
 use log::{info, trace, warn};
 use nom::bytes::complete::{tag, take};
@@ -193,7 +191,7 @@ pub fn decode_cptv_header(i: &[u8]) -> nom::IResult<&[u8], CptvHeader> {
 pub fn get_dynamic_range(frame: &FrameData) -> RangeInclusive<u16> {
     let mut frame_max = 0;
     let mut frame_min = std::u16::MAX;
-    assert_eq!(frame.as_values().iter().count(), 160 * 120);
+    assert_eq!(frame.as_values().iter().count(), frame.width() * frame.height());
     for val in frame.as_values().iter()
     //.take(frame.width() * frame.height() - 36)
     // NOTE(jon): Offset
@@ -412,8 +410,8 @@ fn unpack_frame_v2(prev_frame: &CptvFrame, data: &[u8], frame: &mut CptvFrame) {
     decode_image_data(
         &data[4..],
         initial_px,
-        160usize,
-        120usize,
+        frame.image_data.width(),
+        frame.image_data.height(),
         frame,
         prev_frame,
     );

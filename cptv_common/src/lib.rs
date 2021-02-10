@@ -1,12 +1,12 @@
-//use derivative::Derivative;
-//use std::fmt;
-//use std::fmt::{Error, Formatter};
 use chrono::{NaiveDate, NaiveDateTime};
 use core::fmt;
 #[allow(unused)]
 use log::{info, trace, warn};
 use std::fmt::{Debug, Formatter};
 use std::ops::{Index, IndexMut};
+
+pub const WIDTH: usize = 160;
+pub const HEIGHT: usize = 120;
 
 pub struct Cptv2Header {
     pub timestamp: u64,
@@ -112,11 +112,11 @@ impl Cptv3Header {
 }
 
 #[derive(Clone, Copy)]
-pub struct FrameData([[u16; 160]; 120]);
+pub struct FrameData([[u16; WIDTH]; HEIGHT]);
 
 impl FrameData {
     pub fn empty() -> FrameData {
-        FrameData([[0u16; 160]; 120])
+        FrameData([[0u16; WIDTH]; HEIGHT])
     }
 
     pub fn width(&self) -> usize {
@@ -208,7 +208,7 @@ impl<'a> Iterator for BlocksIter<'a> {
 }
 
 impl Index<usize> for FrameData {
-    type Output = [u16; 160];
+    type Output = [u16; WIDTH];
 
     fn index(&self, index: usize) -> &Self::Output {
         &self.0[index]
