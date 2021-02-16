@@ -261,7 +261,7 @@ fn decode_frame<'a>(
         bit_width: 0,
         frame_size: 0,
         last_ffc_time: 0,
-        image_data: FrameData::empty(),
+        image_data: FrameData::with_dimensions(),
     };
     let mut outer = i;
     for _ in 0..num_frame_fields as usize {
@@ -570,7 +570,7 @@ fn try_compression(cptv: &Cptv2, file_name: &str, input_len: usize, raw_len: usi
             );
             num_iframes += 1;
         } else {
-            let mut d: FrameData = FrameData::empty();
+            let mut d: FrameData = FrameData::with_dimensions();
             for y in 0..cptv.meta.height as usize {
                 for x in 0..cptv.meta.width as usize {
                     d[y][x] = frame_b.image_data[y][x] - frame_a.image_data[y][x];
@@ -775,7 +775,7 @@ fn delta_compress_identity(data: &FrameData) -> FrameData {
 //  - It *might* be worth reducing the number of input bytes if variance fits in 8 bits as opposed to 16.
 
 fn delta_compress_lines(data: &FrameData) -> FrameData {
-    let mut enc = FrameData::empty();
+    let mut enc = FrameData::with_dimensions();
     for y in 0..data.height() {
         let mut prev = 0;
         for x in 0..data.width() {
@@ -784,7 +784,7 @@ fn delta_compress_lines(data: &FrameData) -> FrameData {
         }
     }
     // Verify delta encoding:
-    let mut dec = FrameData::empty();
+    let mut dec = FrameData::with_dimensions();
     for y in 0..data.height() {
         let mut prev = 0;
         for x in 0..data.width() {
@@ -854,14 +854,14 @@ fn predict_average(data: &FrameData, x: usize, y: usize) -> i16 {
 }
 
 fn delta_compress_lines_with_prediction(data: &FrameData) -> FrameData {
-    let mut enc = FrameData::empty();
+    let mut enc = FrameData::with_dimensions();
     for y in 0..data.height() {
         for x in 0..data.width() {
             enc[y][x] = ((data[y][x] as i16) - predict_left(&data, x, y)) as u16;
         }
     }
     // Verify delta encoding:
-    let mut dec = FrameData::empty();
+    let mut dec = FrameData::with_dimensions();
     for y in 0..data.height() {
         for x in 0..data.width() {
             dec[y][x] = ((enc[y][x] as i16) + predict_left(&dec, x, y)) as u16;
@@ -872,7 +872,7 @@ fn delta_compress_lines_with_prediction(data: &FrameData) -> FrameData {
 }
 
 fn delta_compress_frame_snaking(data: &FrameData) -> FrameData {
-    let mut enc = FrameData::empty();
+    let mut enc = FrameData::with_dimensions();
     for y in 0..data.height() {
         let is_odd = y % 2 == 0;
         if is_odd {
@@ -887,7 +887,7 @@ fn delta_compress_frame_snaking(data: &FrameData) -> FrameData {
     }
 
     // Verify delta encoding:
-    let mut dec = FrameData::empty();
+    let mut dec = FrameData::with_dimensions();
     for y in 0..data.height() {
         let is_odd = y % 2 == 0;
         if is_odd {

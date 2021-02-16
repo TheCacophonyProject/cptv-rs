@@ -55,6 +55,8 @@
     console.log('loaded header info');
   };
 
+  let playerContext;
+
   window.cancelLoading = async () => {
     if (isFirefox) {
       reader.cancel();
@@ -63,11 +65,11 @@
   };
 
   function drawFrame() {
-    let hasNextFrame = cptvPlayer.getFrame(num, frame.data);
+    let hasNextFrame = playerContext.getFrame(num, frame.data);
     if (hasNextFrame) {
       context.putImageData(frame, 0, 0);
       num++;
-      setTimeout(() => requestAnimationFrame(drawFrame), 16);
+      setTimeout(() => requestAnimationFrame(drawFrame), 1000/9);
     } else {
       // replay: num = 0;
       num = 0;
@@ -76,11 +78,12 @@
   }
 
   function loadBuffer(buffer) {
-      cptvPlayer.initWithCptvData(new Uint8Array(buffer));
-      headerInfo = cptvPlayer.getHeader();
+      document.getElementById("instructions").style.display = 'none';
+      playerContext.initWithCptvData(new Uint8Array(buffer));
+      headerInfo = playerContext.getHeader();
       document.getElementById("header-info").innerText = headerInfo.replace(/\\n/g, "\n\t");
-      width = cptvPlayer.getWidth();
-      height = cptvPlayer.getHeight();
+      width = playerContext.getWidth();
+      height = playerContext.getHeight();
       //totalFrames = 1;//cptvPlayer.get_num_frames();
       canvas.width = width;
       canvas.height = height;
@@ -111,48 +114,49 @@
 
   (async function () {
     await cptvPlayer.default();
+    playerContext = cptvPlayer.CptvPlayerContext.new();
 
-    // controller = new AbortController();
-    // // signal to pass to fetch
-    // const signal = controller.signal;
-    //
-    // try {
-    //   const response = await fetch('20190922-021028.cptv', {signal});
-    //   const buffer = await response.arrayBuffer();
-    //   loadBuffer(buffer);
-    //
-    //
-    //   /*
-    //
-    //   STREAMING WIP
-    //
-    //   // Pre allocate a buffer of this length:
-    //   const expectedContentLength = response.headers.get('content-length');
-    //   reader = response.body.getReader();
-    //   cptvPlayer.init_buffer_with_size(Number(expectedContentLength));
-    //   let offset = 0;
-    //
-    //   while (true) {
-    //     let {done, value} = await reader.read();
-    //     if (done) {
-    //       break;
-    //     }
-    //     // If we're seeking, we'll have a different starting offset for the range we've downloaded.
-    //     cptvPlayer.insert_chunk_at_offset(value, offset);
-    //
-    //     console.log('got chunk', value.length, offset);
-    //     offset += value.length;
-    //     // wasm decoder needs to let the UI know when it has all the info for the header, so it can know where to
-    //     // download new iframe offsets from.
-    //
-    //     // Push the value into the wasm decoder...
-    //   }
-    //   */
-    // } catch (err) {
-    //   if (err.name !== 'AbortError') { // handle abort()
-    //     throw err;
-    //   }
-    // }
+    controller = new AbortController();
+    // signal to pass to fetch
+    const signal = controller.signal;
+
+    try {
+      const response = await fetch('cptv-files/20210203-041033.cptv', {signal});
+      const buffer = await response.arrayBuffer();
+      loadBuffer(buffer);
+
+
+      /*
+
+      STREAMING WIP
+
+      // Pre allocate a buffer of this length:
+      const expectedContentLength = response.headers.get('content-length');
+      reader = response.body.getReader();
+      cptvPlayer.init_buffer_with_size(Number(expectedContentLength));
+      let offset = 0;
+
+      while (true) {
+        let {done, value} = await reader.read();
+        if (done) {
+          break;
+        }
+        // If we're seeking, we'll have a different starting offset for the range we've downloaded.
+        cptvPlayer.insert_chunk_at_offset(value, offset);
+
+        console.log('got chunk', value.length, offset);
+        offset += value.length;
+        // wasm decoder needs to let the UI know when it has all the info for the header, so it can know where to
+        // download new iframe offsets from.
+
+        // Push the value into the wasm decoder...
+      }
+      */
+    } catch (err) {
+      if (err.name !== 'AbortError') { // handle abort()
+        throw err;
+      }
+    }
   }());
 </script>
 </body>

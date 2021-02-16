@@ -18,7 +18,7 @@ pub struct Cptv2Header {
     pub fps: Option<u8>,
     pub brand: Option<String>,
     pub model: Option<String>,
-    pub device_id: Option<String>,
+    pub device_id: Option<u32>,
     pub serial_number: Option<u32>,
     pub firmware_version: Option<String>,
     pub motion_config: Option<String>,
@@ -28,6 +28,7 @@ pub struct Cptv2Header {
     pub loc_timestamp: Option<u64>,
     pub altitude: Option<f32>,
     pub accuracy: Option<f32>,
+    pub has_background_frame: Option<bool>,
 }
 
 impl Cptv2Header {
@@ -51,11 +52,13 @@ impl Cptv2Header {
             loc_timestamp: None,
             altitude: None,
             accuracy: None,
+            has_background_frame: None,
         }
     }
 }
 //
 impl Debug for Cptv2Header {
+
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_struct("Cptv2Header")
             .field(
@@ -82,6 +85,7 @@ impl Debug for Cptv2Header {
             .field("loc_timestamp", &self.loc_timestamp)
             .field("altitude", &self.altitude)
             .field("accuracy", &self.accuracy)
+            .field("has_background_frame", &self.has_background_frame)
             .finish()
     }
 }
@@ -111,35 +115,41 @@ impl Cptv3Header {
     }
 }
 
-#[derive(Clone, Copy)]
-pub struct FrameData([[u16; WIDTH]; HEIGHT]);
+#[derive(Clone)]
+pub struct FrameData {
+    data: Vec<u16>,
+    width: usize,
+    height: usize
+}
 
 impl FrameData {
-    pub fn empty() -> FrameData {
-        FrameData([[0u16; WIDTH]; HEIGHT])
+    pub fn with_dimensions(width: usize, height: usize) -> FrameData {
+        FrameData {
+            data: vec![0; width * height],
+            width,
+            height
+        }
     }
 
     pub fn width(&self) -> usize {
-        self[0].len()
+        self.width
     }
 
     pub fn height(&self) -> usize {
-        self.0.len()
+        self.height
     }
 
     pub fn as_slice(&self) -> &[u8] {
         unsafe {
             std::slice::from_raw_parts(
-                &self[0] as *const u16 as *const u8,
-                std::mem::size_of_val(self),
+                self.data.as_ptr() as *const u16 as *const u8,
+                std::mem::size_of_val(&self.data[0]) * self.data.len(),
             )
         }
     }
 
     pub fn as_values(&self) -> &[u16] {
-        unsafe {
-            std::slice::from_raw_parts(&self[0] as *const u16, std::mem::size_of_val(self) / 2)
-        }
+        &self.data[..]
     }
 
     pub fn blocks_hilbertian() -> BlocksHilbertianIter {
@@ -153,9 +163,10 @@ impl FrameData {
         BlocksIter::new(&self)
     }
 
+    // This was a function made for fixing up our "black pixel" syncing offset issues
     pub fn offset(&self, offset: usize) -> FrameData {
-        let mut frame = FrameData::empty();
-        let mut pixels = self.as_values().iter().skip(offset);
+        let mut frame = FrameData::with_dimensions(self.width, self.height);
+        let mut pixels = self.data.iter().skip(offset);
         for y in 0..frame.height() {
             for x in 0..frame.width() {
                 let pixel = *pixels.next().unwrap_or(&0u16);
@@ -207,17 +218,18 @@ impl<'a> Iterator for BlocksIter<'a> {
     }
 }
 
+// Gives the row
 impl Index<usize> for FrameData {
-    type Output = [u16; WIDTH];
+    type Output = [u16];
 
     fn index(&self, index: usize) -> &Self::Output {
-        &self.0[index]
+        &self.data[(index * self.width)..(index * self.width) + self.width]
     }
 }
 
 impl IndexMut<usize> for FrameData {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        &mut self.0[index]
+        &mut self.data[(index * self.width)..(index * self.width) + self.width]
     }
 }
 
@@ -228,6 +240,9 @@ pub struct CptvFrame {
     pub bit_width: u8,
     pub frame_size: u32,
     pub last_ffc_time: u32,
+    pub last_ffc_temp_c: f32,
+    pub frame_temp_c: f32,
+    pub is_background_frame: bool,
     //#[derivative(Debug = "ignore")]
     pub image_data: FrameData,
 }
@@ -239,7 +254,10 @@ impl CptvFrame {
             bit_width: 0,
             frame_size: 0,
             last_ffc_time: 0,
-            image_data: FrameData::empty(),
+            last_ffc_temp_c: 0.0,
+            frame_temp_c: 0.0,
+            is_background_frame: false,
+            image_data: FrameData::with_dimensions(0, 0),
         }
     }
 }
@@ -311,6 +329,7 @@ pub enum FieldType {
     FirmwareVersion = b'V',
     CameraSerial = b'N',
     FrameRate = b'Z',
+    BackgroundFrame = b'g',
 
     // TODO: Other header fields I've added to V2
     MinValue = b'R',
@@ -323,6 +342,8 @@ pub enum FieldType {
     PixelBytes = b'w',
     FrameSize = b'f',
     LastFfcTime = b'c',
+    FrameTempC = b'a',
+    LastFfcTempC = b'b',
     TimeOn = b't',
     Unknown = b';',
 }
@@ -356,10 +377,13 @@ impl From<u8> for FieldType {
             b'Z' => FrameRate,
             b'G' => FramesPerIframe,
             b'F' => FrameHeader,
+            b'g' => BackgroundFrame,
             b'w' => PixelBytes,
             b'f' => FrameSize,
             b'c' => LastFfcTime,
             b't' => TimeOn,
+            b'a' => FrameTempC,
+            b'b' => LastFfcTempC,
             _ => Unknown,
         }
     }

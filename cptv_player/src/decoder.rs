@@ -4,6 +4,7 @@ use log::{info, trace, warn};
 use nom::bytes::complete::{tag, take};
 use nom::number::complete::{le_f32, le_i8, le_u16, le_u32, le_u64, le_u8};
 use std::ops::RangeInclusive;
+use crate::v2::decode_cptv2_header;
 
 #[derive(Debug)]
 pub enum CptvHeader {
@@ -12,171 +13,7 @@ pub enum CptvHeader {
     V2(Cptv2Header),
 }
 
-fn decode_cptv3_header(i: &[u8]) -> nom::IResult<&[u8], CptvHeader> {
-    let mut meta = Cptv3Header::new();
-    let (i, _) = tag(b"H")(i)?;
-    let (i, _header_field_len_size) = le_u8(i)?;
-    let (i, num_header_fields) = le_u8(i)?;
-    let mut outer = i;
-    for _ in 0..num_header_fields {
-        let (i, field) = le_u8(outer)?;
-        let (i, field_length) = le_u8(i)?;
-        let (i, val) = take(field_length)(i)?;
-        outer = i;
-        let field_type = FieldType::from(field);
-        match field_type {
-            FieldType::Timestamp => {
-                meta.v2.timestamp = le_u64(val)?.1;
-            }
-            FieldType::Width => {
-                meta.v2.width = le_u32(val)?.1;
-            }
-            FieldType::Height => {
-                meta.v2.height = le_u32(val)?.1;
-            }
-            FieldType::Compression => {
-                meta.v2.compression = le_u8(val)?.1;
-            }
-            FieldType::DeviceName => {
-                meta.v2.device_name = String::from_utf8_lossy(val).into();
-            }
 
-            // Optional fields
-            FieldType::MotionConfig => {
-                meta.v2.motion_config = Some(String::from_utf8_lossy(val).into());
-            }
-            FieldType::PreviewSecs => {
-                meta.v2.preview_secs = Some(le_u8(val)?.1);
-            }
-            FieldType::Latitude => {
-                meta.v2.latitude = Some(le_f32(val)?.1);
-            }
-            FieldType::Longitude => {
-                meta.v2.longitude = Some(le_f32(val)?.1);
-            }
-            FieldType::LocTimestamp => {
-                meta.v2.loc_timestamp = Some(le_u64(val)?.1);
-            }
-            FieldType::Altitude => {
-                meta.v2.altitude = Some(le_f32(i)?.1);
-            }
-            FieldType::Accuracy => {
-                meta.v2.accuracy = Some(le_f32(val)?.1);
-            }
-            // V3 fields
-            FieldType::MinValue => {
-                meta.min_value = le_u16(val)?.1;
-            }
-            FieldType::MaxValue => {
-                meta.max_value = le_u16(val)?.1;
-            }
-            FieldType::NumFrames => {
-                meta.num_frames = le_u32(val)?.1;
-            }
-            FieldType::FrameRate => {
-                meta.frame_rate = le_u8(val)?.1;
-            }
-            FieldType::FramesPerIframe => {
-                meta.frames_per_iframe = le_u8(val)?.1;
-            }
-            _ => {
-                //panic!("Unknown header field type {}", field)
-                std::process::abort();
-            }
-        }
-    }
-    let (i, field) = le_u8(outer)?;
-    assert_eq!(field, b'Q');
-    // This will always be the last block, and after this, frames start.
-    let (i, num_iframes) = le_u32(i)?;
-    outer = i;
-    for _ in 0..num_iframes {
-        let (a, offset) = le_u32(outer)?;
-        meta.toc.push(offset);
-        outer = a;
-    }
-    Ok((outer, CptvHeader::V3(meta)))
-}
-
-pub fn decode_cptv2_header(i: &[u8]) -> nom::IResult<&[u8], CptvHeader> {
-    let mut meta = Cptv2Header::new();
-    let (i, _) = tag(b"H")(i)?;
-    let (i, num_header_fields) = le_u8(i)?;
-    //info!("num header fields {}", num_header_fields);
-    let mut outer = i;
-    for _ in 0..num_header_fields {
-        // TODO(jon): Fix order of this in cptv3 version
-        let (i, field_length) = le_u8(outer)?;
-        let (i, field) = le_u8(i)?;
-        let (i, val) = take(field_length)(i)?;
-        outer = i;
-        // info!("{}", field_length);
-        // info!("{:?}", field as char);
-        let field_type = FieldType::from(field);
-        match field_type {
-            FieldType::Timestamp => {
-                meta.timestamp = le_u64(val)?.1;
-            }
-            FieldType::Width => {
-                meta.width = le_u32(val)?.1;
-            }
-            FieldType::Height => {
-                meta.height = le_u32(val)?.1;
-            }
-            FieldType::Compression => {
-                meta.compression = le_u8(val)?.1;
-            }
-            FieldType::DeviceName => {
-                meta.device_name = String::from_utf8_lossy(val).into();
-            }
-
-            // Optional fields
-            FieldType::FrameRate => meta.fps = Some(le_u8(val)?.1),
-            FieldType::CameraSerial => meta.serial_number = Some(le_u32(val)?.1),
-            FieldType::FirmwareVersion => {
-                meta.firmware_version = Some(String::from_utf8_lossy(val).into());
-            }
-            FieldType::Model => {
-                meta.model = Some(String::from_utf8_lossy(val).into());
-            }
-            FieldType::Brand => {
-                meta.brand = Some(String::from_utf8_lossy(val).into());
-            }
-            FieldType::DeviceID => {
-                meta.device_id = Some(String::from_utf8_lossy(val).into());
-            }
-            FieldType::MotionConfig => {
-                meta.motion_config = Some(String::from_utf8_lossy(val).into());
-            }
-            FieldType::PreviewSecs => {
-                meta.preview_secs = Some(le_u8(val)?.1);
-            }
-            FieldType::Latitude => {
-                meta.latitude = Some(le_f32(val)?.1);
-            }
-            FieldType::Longitude => {
-                meta.longitude = Some(le_f32(val)?.1);
-            }
-            FieldType::LocTimestamp => {
-                meta.loc_timestamp = Some(le_u64(val)?.1);
-            }
-            FieldType::Altitude => {
-                meta.altitude = Some(le_f32(i)?.1);
-            }
-            FieldType::Accuracy => {
-                meta.accuracy = Some(le_f32(val)?.1);
-            }
-            _ => {
-                warn!(
-                    "Unknown header field type {}, {}",
-                    field as char, field_length
-                );
-                //std::process::abort();
-            }
-        }
-    }
-    Ok((outer, CptvHeader::V2(meta)))
-}
 
 pub fn decode_cptv_header(i: &[u8]) -> nom::IResult<&[u8], CptvHeader> {
     let (i, _) = tag(b"CPTV")(i)?;
@@ -213,7 +50,10 @@ pub fn decode_frame_v2<'a>(
         bit_width: 0,
         frame_size: 0,
         last_ffc_time: 0,
-        image_data: FrameData::empty(),
+        last_ffc_temp_c: 0.0,
+        frame_temp_c: 0.0,
+        is_background_frame: false,
+        image_data: FrameData::with_dimensions(0, 0),
     };
     let mut outer = i;
     for _ in 0..num_frame_fields as usize {
@@ -236,9 +76,16 @@ pub fn decode_frame_v2<'a>(
             FieldType::LastFfcTime => {
                 frame.last_ffc_time = le_u32(val)?.1;
             }
+            FieldType::LastFfcTempC => {
+                frame.last_ffc_temp_c = le_f32(val)?.1;
+            }
+            FieldType::FrameTempC => {
+                frame.frame_temp_c = le_f32(val)?.1;
+            }
+
             _ => {
                 //std::process::abort();
-                warn!("Unknown frame field type '{}'", field_code as char);
+                warn!("Unknown frame field type '{}', length: {}", field_code as char, field_length);
             }
         }
     }
@@ -261,7 +108,10 @@ pub fn decode_frame<'a>(
         bit_width: 0,
         frame_size: 0,
         last_ffc_time: 0,
-        image_data: FrameData::empty(),
+        last_ffc_temp_c: 0.0,
+        frame_temp_c: 0.0,
+        is_background_frame: false,
+        image_data: FrameData::with_dimensions(0, 0),
     };
     let mut outer = i;
     for _ in 0..num_frame_fields as usize {
@@ -282,6 +132,16 @@ pub fn decode_frame<'a>(
             }
             FieldType::LastFfcTime => {
                 frame.last_ffc_time = le_u32(val)?.1;
+            }
+            FieldType::LastFfcTempC => {
+                frame.last_ffc_temp_c = le_f32(val)?.1;
+            }
+            FieldType::FrameTempC => {
+                frame.frame_temp_c = le_f32(val)?.1;
+            }
+            FieldType::BackgroundFrame => {
+                let is_background_frame = le_u8(val)?.1;
+                frame.is_background_frame = is_background_frame == 1;
             }
             _ => {
                 //std::process::abort();
