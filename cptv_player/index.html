@@ -34,12 +34,14 @@
 <body>
 <div id="drop">
 <!--  <p style="color: white;margin: 0;height: 200px;padding-top: 30px;text-align: center;font-family: sans-serif;font-size: 20px;">Drop a file to play</p>-->
-  <p id="instructions">Drop a CPTV file here</p>
-  <canvas id="canvas" width="500" height="300" style="text-align: center"></canvas>
+  <canvas id="canvas" width="160" height="120" style="text-align: center"></canvas>
+  <nav>
+    <button id="playback-button">Play/Pause</button>
+  </nav>
   <pre id="header-info"></pre>
 </div>
 <script type="module">
-  import * as cptvPlayer from './pkg/cptv_player.js';
+  import CptvPlayer from "./index.js";
   const canvas = document.getElementById("canvas");
   const context = canvas.getContext('2d');
   let frame;
@@ -51,10 +53,6 @@
   let controller;
   let headerInfo = '';
   const isFirefox = window.navigator.userAgent.toLowerCase().includes("firefox");
-  window.loadedHeaderInfo = function() {
-    console.log('loaded header info');
-  };
-
   let playerContext;
 
   window.cancelLoading = async () => {
@@ -112,25 +110,101 @@
     event.preventDefault();
   });
 
+  const FakeReader = function (bytes) {
+      const state = {
+        offsets: []
+      };
+      state.bytes = bytes;
+      state.offset = 0;
+      const length = bytes.byteLength;
+      console.log("Total length", length);
+      const numParts = 3000;
+      const percentages = length / numParts;
+      for (let i = 0; i < numParts; i++) {
+        state.offsets.push(Math.ceil(percentages * i));
+      }
+      state.offsets.push(length);
+      return {
+        read() {
+          return new Promise((resolve, reject) => {
+            state.offset += 1;
+            resolve({
+              value: state.bytes.slice(state.offsets[state.offset - 1], state.offsets[state.offset]),
+              done: state.offset === numParts
+            });
+          });
+        },
+        cancel() {
+          // TODO
+        }
+      }
+  };
+
+
+
   (async function () {
-    await cptvPlayer.default();
-    playerContext = cptvPlayer.CptvPlayerContext.new();
-
-    controller = new AbortController();
-    // signal to pass to fetch
-    const signal = controller.signal;
-
+    const player = new CptvPlayer(canvas);
+    const button = document.getElementById("playback-button");
+    button.addEventListener("click", player.togglePlayback.bind(player))
     try {
-      const response = await fetch('cptv-files/20210203-041033.cptv', {signal});
-      const buffer = await response.arrayBuffer();
-      loadBuffer(buffer);
+      //await player.initWithCptvUrl('cptv-files/20210203-041033.cptv');
+
+      // A good example for normalisation, because it has a black dark spot in it.
+      //await player.initWithCptvUrl('cptv-files/20190922-021916.cptv');
+      //await player.initWithCptvUrl('cptv-files/20201220-225508.cptv');
+
+      // Kaitorete sand and grass (windy false positives)
+      //await player.initWithCptvUrl('cptv-files/20210224-064123.cptv');
+      //await player.initWithCptvUrl('cptv-files/20210224-070630.cptv');
+      //await player.initWithCptvUrl('cptv-files/20210224-071615.cptv');
+      //await player.initWithCptvUrl('cptv-files/20210224-071640.cptv');
+      //await player.initWithCptvUrl('cptv-files/20210224-072625.cptv');
+      //await player.initWithCptvUrl('cptv-files/20210224-072650.cptv');
+      //await player.initWithCptvUrl('cptv-files/20210224-072650.cptv');
+      //await player.initWithCptvUrl('cptv-files/20210224-073133.cptv');
+      //await player.initWithCptvUrl('cptv-files/20210314-201615.cptv');
+
+      //await player.initWithCptvUrl('cptv-files/20200925-063753.cptv');
+      //
+      //await player.initWithCptvUrl('cptv-files/20200925-063902.cptv');
+      //await player.initWithCptvUrl('cptv-files/20200925-054728.cptv');
+      // 20201030-063521.cptv
+      // await player.initWithCptvUrl('cptv-files/20201030-063521.cptv');
+      // await player.initWithCptvUrl('cptv-files/20201030-060138.cptv');
+      await player.initWithCptvUrl('cptv-files/20201030-042742.cptv');
 
 
-      /*
+      const header = await player.getHeader();
+      console.log(header);
+      //await player.abortDownload();
+      await player.renderNextFrame()
 
-      STREAMING WIP
+      //await player.getRawFrame();
+
+      // const response = await fetch('cptv-files/20210203-041033.cptv', {signal});
+      // //const bytes = await response.arrayBuffer();
+      // //const fakeReader = FakeReader(new Uint8Array(bytes));
+      // // Let's make a pretend reader, that just spits out a known number of bytes at a time:
+      // //playerContext.init_with_readable_stream(fakeReader, Number(response.headers.get('content-length')));
+
+      // Now we can cancel as soon as we've read the header, which is pretty cool.
+      //await reader.cancel();
+
+      // const frameBuffer = new Uint8Array(160*120*2);
+      // console.log(frameBuffer.byteLength, playerContext.ptr);
+      // const firstFrame = cptvPlayer.CptvPlayerContext.getRawFrame(playerContext);
+      // console.log(firstFrame);
+
+
+
+      // //const buffer = await response.arrayBuffer();
+      // //loadBuffer(buffer);
+      // /*
+
+      //STREAMING WIP
 
       // Pre allocate a buffer of this length:
+      /*
       const expectedContentLength = response.headers.get('content-length');
       reader = response.body.getReader();
       cptvPlayer.init_buffer_with_size(Number(expectedContentLength));
@@ -152,6 +226,10 @@
         // Push the value into the wasm decoder...
       }
       */
+
+      // If the CPTV file is V2, then we can't do streaming, so we'd have a different path.
+      // We still want streaming in the sense that we load the buffer in a chunk at a time.
+
     } catch (err) {
       if (err.name !== 'AbortError') { // handle abort()
         throw err;

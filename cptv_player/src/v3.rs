@@ -4,8 +4,9 @@ use nom::number::complete::{le_f32, le_i8, le_u16, le_u32, le_u64, le_u8};
 use cptv_common::{Cptv3Header, FieldType};
 use std::io::Cursor;
 use crate::decoder::{CptvHeader, decode_frame};
+use crate::CptvPlayerContext;
 
-fn decode_zstd_blocks(meta: &Cptv3Header, remaining: &[u8]) -> Vec<Vec<u8>> {
+pub fn decode_zstd_blocks(meta: &Cptv3Header, remaining: &[u8]) -> Vec<Vec<u8>> {
     let mut iframe_blocks = Vec::new();
     let mut prev_offset = 0;
 
@@ -38,7 +39,7 @@ fn decode_zstd_blocks(meta: &Cptv3Header, remaining: &[u8]) -> Vec<Vec<u8>> {
 }
 
 
-fn get_frame_v3(number: u32, image_data: &mut [u8]) -> bool {
+pub fn get_frame_v3(context: &mut CptvPlayerContext, number: u32, image_data: &mut [u8]) -> bool {
     // Find the block closest, decode from the start to frame x:
     let (mut offset, prev_block, prev_frame_num) = PLAYBACK_INFO.with(|info| {
         let info = info.borrow();
@@ -116,7 +117,7 @@ fn get_frame_v3(number: u32, image_data: &mut [u8]) -> bool {
 
 
 
-fn decode_cptv3_header(i: &[u8]) -> nom::IResult<&[u8], CptvHeader> {
+pub fn decode_cptv3_header(i: &[u8]) -> nom::IResult<&[u8], CptvHeader> {
     let mut meta = Cptv3Header::new();
     let (i, _) = tag(b"H")(i)?;
     let (i, _header_field_len_size) = le_u8(i)?;

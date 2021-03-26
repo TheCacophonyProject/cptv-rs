@@ -1,0 +1,13 @@
+{
+    "name": "cptv_player_rs",
+    "collaborators": [
+        "jon hardie <jon@hardiesoft.com>"
+    ],
+    "version": "0.1.0",
+    "files": [
+        "index.js"
+    ],
+    "module": "index.js",
+    "types": "index.d.ts",
+    "sideEffects": false
+}

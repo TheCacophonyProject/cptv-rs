@@ -260,8 +260,11 @@ fn decode_frame<'a>(
         time_on: 0,
         bit_width: 0,
         frame_size: 0,
-        last_ffc_time: 0,
-        image_data: FrameData::with_dimensions(),
+        last_ffc_time: None,
+        last_ffc_temp_c: None,
+        frame_temp_c: None,
+        is_background_frame: false,
+        image_data: FrameData::with_dimensions(width as usize, height as usize),
     };
     let mut outer = i;
     for _ in 0..num_frame_fields as usize {
@@ -280,7 +283,7 @@ fn decode_frame<'a>(
                 frame.frame_size = le_u32(val)?.1;
             }
             b'c' => {
-                frame.last_ffc_time = le_u32(val)?.1;
+                frame.last_ffc_time = Some(le_u32(val)?.1);
             }
             b'a' => {
                 // TODO(jon)

@@ -4,10 +4,15 @@ use core::fmt;
 use log::{info, trace, warn};
 use std::fmt::{Debug, Formatter};
 use std::ops::{Index, IndexMut};
+use std::num::NonZeroU32;
+use std::time::Duration;
+use std::cmp::min;
+use serde::{Serialize, Deserialize};
 
 pub const WIDTH: usize = 160;
 pub const HEIGHT: usize = 120;
 
+#[derive(Serialize)]
 pub struct Cptv2Header {
     pub timestamp: u64,
     pub width: u32,
@@ -90,6 +95,8 @@ impl Debug for Cptv2Header {
     }
 }
 
+// Cptv3 header includes the v2 header + additional fields to allow seeking.
+
 #[derive(Debug)]
 pub struct Cptv3Header {
     pub v2: Cptv2Header,
@@ -119,7 +126,9 @@ impl Cptv3Header {
 pub struct FrameData {
     data: Vec<u16>,
     width: usize,
-    height: usize
+    height: usize,
+    min: u16,
+    max: u16,
 }
 
 impl FrameData {
@@ -127,8 +136,18 @@ impl FrameData {
         FrameData {
             data: vec![0; width * height],
             width,
-            height
+            height,
+            min: u16::MAX,
+            max: u16::MIN
         }
+    }
+
+    pub fn min(&self) -> u16 {
+        self.min
+    }
+
+    pub fn max(&self) -> u16 {
+        self.max
     }
 
     pub fn width(&self) -> usize {
@@ -139,6 +158,10 @@ impl FrameData {
         self.height
     }
 
+    pub fn data(&self) -> &[u16] {
+        &self.data
+    }
+
     pub fn as_slice(&self) -> &[u8] {
         unsafe {
             std::slice::from_raw_parts(
@@ -146,6 +169,14 @@ impl FrameData {
                 std::mem::size_of_val(&self.data[0]) * self.data.len(),
             )
         }
+    }
+
+    pub fn set(&mut self, x: usize, y: usize, val: u16) {
+        // Ignore edge pixels for this:
+
+        self.max = u16::max(self.max, val);
+        self.min = u16::min(self.min, val);
+        self[y][x] = val;
     }
 
     pub fn as_values(&self) -> &[u16] {
@@ -235,15 +266,24 @@ impl IndexMut<usize> for FrameData {
 
 //#[derive(Derivative)]
 //#[derivative(Debug, Copy, Clone)]
+#[derive(Serialize, Clone)]
 pub struct CptvFrame {
     pub time_on: u32,
+
+    // Is bit_width needed?  Is frame_size
     pub bit_width: u8,
     pub frame_size: u32,
-    pub last_ffc_time: u32,
-    pub last_ffc_temp_c: f32,
-    pub frame_temp_c: f32,
+
+    // Some cameras may not have FFC information, so this is optional.
+    pub last_ffc_time: Option<u32>,
+    pub last_ffc_temp_c: Option<f32>,
+    pub frame_temp_c: Option<f32>,
+
     pub is_background_frame: bool,
     //#[derivative(Debug = "ignore")]
+
+    // Raw image data?
+    #[serde(skip_serializing)]
     pub image_data: FrameData,
 }
 
@@ -253,12 +293,46 @@ impl CptvFrame {
             time_on: 0,
             bit_width: 0,
             frame_size: 0,
-            last_ffc_time: 0,
-            last_ffc_temp_c: 0.0,
-            frame_temp_c: 0.0,
+            last_ffc_time: None,
+            last_ffc_temp_c: None,
+            frame_temp_c: None,
             is_background_frame: false,
             image_data: FrameData::with_dimensions(0, 0),
         }
+    }
+}
+
+impl Debug for CptvFrame {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CptvFrame")
+            .field("last_ffc_time",
+               // To get absolute time, need recording start time from header:
+           &match self.last_ffc_time {
+                   Some(timestamp) => format!("{:?}s ago", &Duration::from_millis(self.time_on as u64 - timestamp as u64).as_secs()),
+                   None => "None".to_string()
+               }
+            )
+            .field("time_on", &{
+                let seconds = Duration::from_millis(self.time_on as u64).as_secs();
+                let minutes = seconds / 60;
+                let hours = minutes / 60;
+                let minutes = minutes - (hours * 60);
+                let seconds = seconds - ((hours * 60 * 60) + (minutes * 60));
+                if hours > 0 {
+                    // Minutes
+                    format!("{}h, {}m, {}s", hours, minutes, seconds)
+                } else if minutes > 0 {
+                    format!("{}m, {}s", minutes, seconds)
+                } else {
+                    format!("{}s", seconds)
+                }
+            })
+            .field("frame_temp_c", &self.frame_temp_c)
+            .field("last_ffc_temp_c", &self.last_ffc_temp_c)
+            .field("bit_width", &self.bit_width)
+            .field("is_background_frame", &self.is_background_frame)
+            .field("image_data", &format!("FrameData({}x{})", &self.image_data.width, &self.image_data.height))
+            .finish()
     }
 }
 

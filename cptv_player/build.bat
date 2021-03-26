@@ -12,4 +12,3 @@ echo a|Xcopy /E /I .\pkg-web\*.ts ..\..\feverscreen.github.io\cptv-player\
 echo a|Xcopy /E /I .\pkg-web\*.json ..\..\feverscreen.github.io\cptv-player\
 echo a|Xcopy /E /I .\pkg-web\*.js ..\..\feverscreen.github.io\cptv-player\
 echo a|Xcopy /E /I .\pkg-web\*.wasm ..\..\feverscreen.github.io\cptv-player\
-
