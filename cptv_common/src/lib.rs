@@ -18,21 +18,29 @@ pub struct Cptv2Header {
     pub width: u32,
     pub height: u32,
     pub compression: u8,
+    #[serde(rename = "deviceName")]
     pub device_name: String,
 
     pub fps: Option<u8>,
     pub brand: Option<String>,
     pub model: Option<String>,
+    #[serde(rename = "deviceId")]
     pub device_id: Option<u32>,
+    #[serde(rename = "serialNumber")]
     pub serial_number: Option<u32>,
+    #[serde(rename = "firmwareVersion")]
     pub firmware_version: Option<String>,
+    #[serde(rename = "motionConfig")]
     pub motion_config: Option<String>,
+    #[serde(rename = "previewSecs")]
     pub preview_secs: Option<u8>,
     pub latitude: Option<f32>,
     pub longitude: Option<f32>,
+    #[serde(rename = "locTimestamp")]
     pub loc_timestamp: Option<u64>,
     pub altitude: Option<f32>,
     pub accuracy: Option<f32>,
+    #[serde(rename = "hasBackgroundFrame")]
     pub has_background_frame: Option<bool>,
 }
 
@@ -122,8 +130,9 @@ impl Cptv3Header {
     }
 }
 
-#[derive(Clone)]
+#[derive(Serialize, Clone)]
 pub struct FrameData {
+    #[serde(skip_serializing)]
     data: Vec<u16>,
     width: usize,
     height: usize,
@@ -268,22 +277,30 @@ impl IndexMut<usize> for FrameData {
 //#[derivative(Debug, Copy, Clone)]
 #[derive(Serialize, Clone)]
 pub struct CptvFrame {
+    #[serde(rename = "timeOnMs")]
     pub time_on: u32,
 
     // Is bit_width needed?  Is frame_size
+    #[serde(skip_serializing)]
     pub bit_width: u8,
+    #[serde(skip_serializing)]
     pub frame_size: u32,
 
     // Some cameras may not have FFC information, so this is optional.
+    #[serde(rename = "lastFfcTimeMs")]
     pub last_ffc_time: Option<u32>,
+    #[serde(rename = "lastFfcTempC")]
     pub last_ffc_temp_c: Option<f32>,
+    #[serde(rename = "frameTempC")]
     pub frame_temp_c: Option<f32>,
 
+    #[serde(rename = "isBackgroundFrame")]
     pub is_background_frame: bool,
     //#[derivative(Debug = "ignore")]
 
     // Raw image data?
-    #[serde(skip_serializing)]
+    //#[serde(skip_serializing)]
+    #[serde(rename = "imageData")]
     pub image_data: FrameData,
 }
 

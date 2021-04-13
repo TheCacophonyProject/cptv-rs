@@ -1,0 +1,16 @@
+{
+  "name": "cptv-player",
+  "collaborators": [
+    "jon hardie <jon@hardiesoft.com>"
+  ],
+  "version": "0.1.0",
+  "files": [
+    "index.js",
+    "index.d.ts"
+  ],
+  "type": "module",
+  "main": "index.js",
+  "module": "index.js",
+  "types": "index.d.ts",
+  "sideEffects": false
+}

@@ -494,7 +494,13 @@ impl CptvPlayerContext {
 
                             //if !frame.is_background_frame {
                             let min = frame.image_data.min();
-                            if min != 0 { // If the minimum value is zero, it's probably a glitched frame.
+                            let within_ffc_timeout = match frame.last_ffc_time {
+                                Some(last_ffc_time) => {
+                                    (frame.time_on as i32 - last_ffc_time as i32) < 5000
+                                }
+                                None => false
+                            };
+                            if min != 0 && (frame.is_background_frame || !within_ffc_timeout) { // If the minimum value is zero, it's probably a glitched frame.
                                 context.playback_info.min_value = u16::min(context.playback_info.min_value, frame.image_data.min());
                                 context.playback_info.max_value = u16::max(context.playback_info.max_value, frame.image_data.max());
                             }
@@ -521,7 +527,7 @@ impl CptvPlayerContext {
                                         // Now we know how many frames there actually were in the video,
                                         // and can set that information.
                                         context.playback_info.total_frames = Some(context.iframes.len());
-                                        info!("Stream completed with total frames {:?}", context.playback_info.total_frames.unwrap());
+                                        info!("Stream completed with total frames {:?} (including any background frame)", context.playback_info.total_frames.unwrap());
                                         break;
                                     }
                                     context = CptvPlayerContext::fetch_bytes(context).await?.0;
@@ -563,6 +569,11 @@ impl CptvPlayerContext {
     //     }
     // }
 
+    #[wasm_bindgen(js_name = bytesLoaded)]
+    pub fn get_bytes_loaded(&mut self) -> usize {
+        self.reader_mut().available
+    }
+
     #[wasm_bindgen(js_name = getFrameHeader)]
     pub fn get_frame_header_n(&self, n: usize) -> JsValue {
 
@@ -575,7 +586,7 @@ impl CptvPlayerContext {
         // Playback info should be handled in the JS layer.
         match self.iframes.get(self.get_frame_index(n)) {
             Some(frame) => serde_wasm_bindgen::to_value(frame).unwrap(),
-            None => JsValue::from_bool(false)
+            None => JsValue::null()
         }
     }
 
@@ -596,12 +607,31 @@ impl CptvPlayerContext {
 
     // TODO(jon): Not sure that this does the right thing?
     #[wasm_bindgen(js_name = getRawFrameN)]
-    pub fn get_raw_frame_n(&mut self, n: usize) -> Uint16Array {
+    pub fn get_raw_frame_n(&self, n: usize) -> Uint16Array {
         // Get the raw frame specified by a frame number
         // If frame n hasn't yet downloaded, return an empty array.
         match self.iframes.get(self.get_frame_index(n)) {
             Some(frame) => unsafe { Uint16Array::view(frame.image_data.data()) },
             None => Uint16Array::new_with_length(0)
+        }
+    }
+
+    #[wasm_bindgen(js_name = getBackgroundFrame)]
+    pub fn get_background_frame(&self) -> Uint16Array {
+        let has_background_frame = match &self.clip_info {
+            CptvHeader::V2(h) => match h.has_background_frame {
+                Some(bg_frame) => bg_frame,
+                None => false
+            },
+            _ => false,
+        };
+        if has_background_frame {
+            match self.iframes.get(0) {
+                Some(frame) => unsafe { Uint16Array::view(frame.image_data.data()) },
+                None => Uint16Array::new_with_length(0)
+            }
+        } else {
+            Uint16Array::new_with_length(0)
         }
     }
 
