@@ -5,8 +5,9 @@ declare class CptvPlayer {
      * Initialises a new player and associated stream reader.
      * @param url (String)
      * @param size (Number)
+     * @returns True on success, or an error string on failure (String | Boolean)
      */
-    initWithCptvUrlAndSize(url: string, size: number): Promise<void>;
+    initWithCptvUrlAndSize(url: string, size: number): Promise<string | boolean>;
 
     /**
      * NodeJS usage only:

@@ -249,6 +249,7 @@ impl CptvPlayerContext {
             let arr = value.dyn_into::<Uint8Array>().unwrap();
             // Get the resumable reader from the gz decoder if it exists
             // TODO(jon): Handle non-gzip streams for cptv3
+            // info!("Got chunk {}", arr.length());
             if self.gz_decoder.is_some() {
                 self.reader_mut().append_bytes(&arr);
             } else {
@@ -699,6 +700,8 @@ impl CptvPlayerContext {
                         context.downloaded_data.gzip_ended = true;
                     }
                     if !context.downloaded_data.stream_ended {
+                        // TODO(jon): Could get bytes a bit more greedily here to be able to read
+                        //  ahead and buffer a bit, esp on slow connections?
                         let is_last_chunk = context.get_bytes().await?;
                         if is_last_chunk {
                             context.reader_mut().stream_ended = true;

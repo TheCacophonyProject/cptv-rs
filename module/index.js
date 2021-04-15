@@ -77,13 +77,27 @@ export class CptvPlayer {
       this.reader && await this.reader.cancel();
     }
     this.playerContext = cptvPlayer.CptvPlayerContext.new();
-    this.response = await fetch(url);
-    this.reader = this.response.body.getReader();
-    this.expectedSize = size;
-    await this.playerContext.initWithReadableStream(this.reader, size);
-    unlocker.unlock();
-    this.inited = true;
-    this.locked = false;
+    try {
+      // Use this expired JWT token to test that failure case (usually when a page has been open too long)
+      //const oldJWT = "https://api.cacophony.org.nz/api/v1/signedUrl?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJfdHlwZSI6ImZpbGVEb3dubG9hZCIsImtleSI6InJhdy8yMDIxLzA0LzE1LzQ3MGU2YjY1LWZkOTgtNDk4Ny1iNWQ3LWQyN2MwOWIxODFhYSIsImZpbGVuYW1lIjoiMjAyMTA0MTUtMTE0MjE2LmNwdHYiLCJtaW1lVHlwZSI6ImFwcGxpY2F0aW9uL3gtY3B0diIsImlhdCI6MTYxODQ2MjUwNiwiZXhwIjoxNjE4NDYzMTA2fQ.p3RAOX7Ns52JqHWTMM5Se-Fn-UCyRtX2tveaGrRmiwo";
+      this.response = await fetch(url);
+      if (this.response.status === 200) {
+        this.reader = this.response.body.getReader();
+        this.expectedSize = size;
+        await this.playerContext.initWithReadableStream(this.reader, size);
+        unlocker.unlock();
+        this.inited = true;
+        this.locked = false;
+        return true;
+      } else {
+        this.locked = false;
+        return (await this.response.json()).messages.pop();
+      }
+    } catch (e) {
+      this.locked = false;
+      return `Failed to load CPTV url ${url}`;
+    }
+
   }
 
   async initWithCptvFile(filePath) {
