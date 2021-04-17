@@ -84,7 +84,7 @@ export class CptvPlayer {
       if (this.response.status === 200) {
         this.reader = this.response.body.getReader();
         this.expectedSize = size;
-        await this.playerContext.initWithReadableStream(this.reader, size);
+        await this.playerContext.initWithStream(this.reader, size);
         unlocker.unlock();
         this.inited = true;
         this.locked = false;
@@ -120,7 +120,7 @@ export class CptvPlayer {
     this.playerContext = cptvPlayer.CptvPlayerContext.new();
     this.reader = new FakeReader(file);
     this.expectedSize = file.length;
-    await this.playerContext.initWithReadableStream(this.reader, file.length);
+    await this.playerContext.initWithStream(this.reader, file.length);
     unlocker.unlock();
     this.inited = true;
     this.locked = false;

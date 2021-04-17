@@ -1,10 +1,10 @@
-use ruzstd::frame_decoder;
+use crate::decoder::{decode_frame, CptvHeader};
+use crate::CptvPlayerContext;
+use cptv_common::{predict_left, predict_right, Cptv3Header, CptvFrame, FieldType, FrameData};
 use nom::bytes::complete::{tag, take};
 use nom::number::complete::{le_f32, le_i8, le_u16, le_u32, le_u64, le_u8};
-use cptv_common::{Cptv3Header, FieldType};
+use ruzstd::frame_decoder;
 use std::io::Cursor;
-use crate::decoder::{CptvHeader, decode_frame};
-use crate::CptvPlayerContext;
 
 pub fn decode_zstd_blocks(meta: &Cptv3Header, remaining: &[u8]) -> Vec<Vec<u8>> {
     let mut iframe_blocks = Vec::new();
@@ -37,7 +37,6 @@ pub fn decode_zstd_blocks(meta: &Cptv3Header, remaining: &[u8]) -> Vec<Vec<u8>> 
     }
     decoded_zstd_blocks
 }
-
 
 pub fn get_frame_v3(context: &mut CptvPlayerContext, number: u32, image_data: &mut [u8]) -> bool {
     // Find the block closest, decode from the start to frame x:
@@ -78,7 +77,7 @@ pub fn get_frame_v3(context: &mut CptvPlayerContext, number: u32, image_data: &m
         FRAME_BUFFER.with(|prev_frame| {
             let frame = {
                 if let Ok((remaining, frame)) =
-                decode_frame(&prev_frame.borrow(), &block[offset..], offset == 0)
+                    decode_frame(&prev_frame.borrow(), &block[offset..], offset == 0)
                 {
                     let image = &frame.image_data;
                     // Copy frame out to output:
@@ -114,8 +113,6 @@ pub fn get_frame_v3(context: &mut CptvPlayerContext, number: u32, image_data: &m
     });
     true
 }
-
-
 
 pub fn decode_cptv3_header(i: &[u8]) -> nom::IResult<&[u8], CptvHeader> {
     let mut meta = Cptv3Header::new();
@@ -201,4 +198,92 @@ pub fn decode_cptv3_header(i: &[u8]) -> nom::IResult<&[u8], CptvHeader> {
         outer = a;
     }
     Ok((outer, CptvHeader::V3(meta)))
+}
+
+// Unpack a frame based on the previous frame:
+// TODO(jon): Shouldn't this be predicated on whether this is a v2 or v3 frame?
+fn unpack_frame(prev_frame: &CptvFrame, frame: &mut CptvFrame, is_iframe: bool) {
+    for y in 0..frame.image_data.height() {
+        let is_odd = y % 2 == 0;
+        if is_odd {
+            for x in 0..frame.image_data.width() {
+                frame.image_data[y][x] += predict_left(&frame.image_data, x, y) as u16;
+            }
+        } else {
+            for x in (0..frame.image_data.width()).rev() {
+                frame.image_data[y][x] += predict_right(&frame.image_data, x, y) as u16;
+            }
+        }
+    }
+    if !is_iframe {
+        for y in 0..prev_frame.image_data.height() {
+            for x in 0..prev_frame.image_data.width() {
+                frame.image_data[y][x] += prev_frame.image_data[y][x];
+            }
+        }
+    }
+}
+
+pub fn decode_frame<'a>(
+    prev_frame: &CptvFrame,
+    data: &'a [u8],
+    is_iframe: bool,
+) -> nom::IResult<&'a [u8], CptvFrame> {
+    let (i, _) = tag(b"F")(data)?;
+    let (i, _code_len) = le_u8(i)?;
+    let (i, num_frame_fields) = le_u8(i)?;
+    let mut frame = CptvFrame {
+        time_on: 0,
+        bit_width: 0,
+        frame_size: 0,
+        last_ffc_time: None,
+        last_ffc_temp_c: None,
+        frame_temp_c: None,
+        is_background_frame: false,
+
+        // TODO(jon): We need to initialise this to the correct dimensions, from our context?
+        image_data: FrameData::with_dimensions(160, 120),
+    };
+    let mut outer = i;
+    for _ in 0..num_frame_fields as usize {
+        let (i, field_code) = le_u8(outer)?;
+        let (i, field_length) = le_u8(i)?;
+        let (i, val) = take(field_length)(i)?;
+        outer = i;
+        let fc = FieldType::from(field_code);
+        match fc {
+            FieldType::TimeOn => {
+                frame.time_on = le_u32(val)?.1;
+            }
+            FieldType::PixelBytes => {
+                frame.bit_width = le_u8(val)?.1;
+            }
+            FieldType::FrameSize => {
+                frame.frame_size = le_u32(val)?.1;
+            }
+            FieldType::LastFfcTime => {
+                frame.last_ffc_time = Some(le_u32(val)?.1);
+            }
+            FieldType::LastFfcTempC => {
+                frame.last_ffc_temp_c = Some(le_f32(val)?.1);
+            }
+            FieldType::FrameTempC => {
+                frame.frame_temp_c = Some(le_f32(val)?.1);
+            }
+            FieldType::BackgroundFrame => {
+                let is_background_frame = le_u8(val)?.1;
+                frame.is_background_frame = is_background_frame == 1;
+            }
+            _ => {
+                //std::process::abort();
+                warn!("Unknown frame field type {}", field_code as char);
+            }
+        }
+    }
+
+    assert!(frame.frame_size > 0);
+    let (i, _) = take(frame.frame_size as usize)(outer)?;
+    //copy_frame_data(data, &mut frame)?;
+    unpack_frame(prev_frame, &mut frame, is_iframe);
+    Ok((i, frame))
 }

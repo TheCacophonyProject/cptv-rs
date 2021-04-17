@@ -1,16 +1,11 @@
-use chrono::{NaiveDate, NaiveDateTime};
+use chrono::NaiveDateTime;
 use core::fmt;
 #[allow(unused)]
 use log::{info, trace, warn};
+use serde::Serialize;
 use std::fmt::{Debug, Formatter};
 use std::ops::{Index, IndexMut};
-use std::num::NonZeroU32;
 use std::time::Duration;
-use std::cmp::min;
-use serde::{Serialize, Deserialize};
-
-pub const WIDTH: usize = 160;
-pub const HEIGHT: usize = 120;
 
 #[derive(Serialize)]
 pub struct Cptv2Header {
@@ -69,9 +64,8 @@ impl Cptv2Header {
         }
     }
 }
-//
-impl Debug for Cptv2Header {
 
+impl Debug for Cptv2Header {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_struct("Cptv2Header")
             .field(
@@ -104,7 +98,6 @@ impl Debug for Cptv2Header {
 }
 
 // Cptv3 header includes the v2 header + additional fields to allow seeking.
-
 #[derive(Debug)]
 pub struct Cptv3Header {
     pub v2: Cptv2Header,
@@ -112,7 +105,6 @@ pub struct Cptv3Header {
     pub max_value: u16,
     pub toc: Vec<u32>,
     pub num_frames: u32,
-    pub frame_rate: u8,
     pub frames_per_iframe: u8,
 }
 
@@ -124,7 +116,6 @@ impl Cptv3Header {
             max_value: 0,
             toc: Vec::new(),
             num_frames: 0,
-            frame_rate: 0,
             frames_per_iframe: 0,
         }
     }
@@ -147,7 +138,7 @@ impl FrameData {
             width,
             height,
             min: u16::MAX,
-            max: u16::MIN
+            max: u16::MIN,
         }
     }
 
@@ -171,36 +162,12 @@ impl FrameData {
         &self.data
     }
 
-    pub fn as_slice(&self) -> &[u8] {
-        unsafe {
-            std::slice::from_raw_parts(
-                self.data.as_ptr() as *const u16 as *const u8,
-                std::mem::size_of_val(&self.data[0]) * self.data.len(),
-            )
-        }
-    }
-
     pub fn set(&mut self, x: usize, y: usize, val: u16) {
-        // Ignore edge pixels for this:
+        // Ignore edge pixels for this?
 
         self.max = u16::max(self.max, val);
         self.min = u16::min(self.min, val);
         self[y][x] = val;
-    }
-
-    pub fn as_values(&self) -> &[u16] {
-        &self.data[..]
-    }
-
-    pub fn blocks_hilbertian() -> BlocksHilbertianIter {
-        // TODO(jon): 8x8 blocks that follow some kind of zig-zag hilbert-like pattern.
-        // Then we do predictive delta coding on them.
-        // Or could be 4x4? or 8x8 in 4x4 pieces?
-        BlocksHilbertianIter {}
-    }
-
-    pub fn blocks<'a>(&self) -> BlocksIter {
-        BlocksIter::new(&self)
     }
 
     // This was a function made for fixing up our "black pixel" syncing offset issues
@@ -215,46 +182,6 @@ impl FrameData {
             }
         }
         frame
-    }
-}
-
-pub struct BlocksHilbertianIter {}
-
-pub struct BlocksIter<'a> {
-    index: usize,
-    data: &'a FrameData,
-}
-
-impl<'a> BlocksIter<'a> {
-    pub fn new(data: &'a FrameData) -> BlocksIter<'a> {
-        BlocksIter { index: 0, data }
-    }
-}
-
-impl<'a> Iterator for BlocksIter<'a> {
-    type Item = [u16; 64];
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let max_index = 300usize; // 20 x 15 blocks
-        if self.index < max_index {
-            let mut block = [0u16; 64];
-            // Copy from data...
-            let offset_x = self.index % 20;
-            let offset_y = self.index / 20;
-
-            let values = self.data.as_values();
-
-            for y in 0..8 {
-                let block_start_index = ((offset_y * 8 + y) * 160) + (offset_x * 8);
-                let slice = &values[block_start_index..block_start_index + 8];
-                &block[(y * 8)..((y * 8) + 8)].copy_from_slice(&slice);
-            }
-
-            self.index += 1;
-            Some(block)
-        } else {
-            None
-        }
     }
 }
 
@@ -273,8 +200,6 @@ impl IndexMut<usize> for FrameData {
     }
 }
 
-//#[derive(Derivative)]
-//#[derivative(Debug, Copy, Clone)]
 #[derive(Serialize, Clone)]
 pub struct CptvFrame {
     #[serde(rename = "timeOnMs")]
@@ -296,10 +221,8 @@ pub struct CptvFrame {
 
     #[serde(rename = "isBackgroundFrame")]
     pub is_background_frame: bool,
-    //#[derivative(Debug = "ignore")]
 
     // Raw image data?
-    //#[serde(skip_serializing)]
     #[serde(rename = "imageData")]
     pub image_data: FrameData,
 }
@@ -322,12 +245,16 @@ impl CptvFrame {
 impl Debug for CptvFrame {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_struct("CptvFrame")
-            .field("last_ffc_time",
-               // To get absolute time, need recording start time from header:
-           &match self.last_ffc_time {
-                   Some(timestamp) => format!("{:?}s ago", &Duration::from_millis(self.time_on as u64 - timestamp as u64).as_secs()),
-                   None => "None".to_string()
-               }
+            .field(
+                "last_ffc_time",
+                // To get absolute time, need recording start time from header:
+                &match self.last_ffc_time {
+                    Some(timestamp) => format!(
+                        "{:?}s ago",
+                        &Duration::from_millis(self.time_on as u64 - timestamp as u64).as_secs()
+                    ),
+                    None => "None".to_string(),
+                },
             )
             .field("time_on", &{
                 let seconds = Duration::from_millis(self.time_on as u64).as_secs();
@@ -348,7 +275,13 @@ impl Debug for CptvFrame {
             .field("last_ffc_temp_c", &self.last_ffc_temp_c)
             .field("bit_width", &self.bit_width)
             .field("is_background_frame", &self.is_background_frame)
-            .field("image_data", &format!("FrameData({}x{})", &self.image_data.width, &self.image_data.height))
+            .field(
+                "image_data",
+                &format!(
+                    "FrameData({}x{})",
+                    &self.image_data.width, &self.image_data.height
+                ),
+            )
             .finish()
     }
 }
@@ -361,40 +294,6 @@ pub struct Cptv2 {
 pub struct Cptv3 {
     pub meta: Cptv3Header,
     pub frames: Vec<CptvFrame>,
-}
-
-//impl fmt::Debug for Cptv2 {
-//    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-//        write!(f, "CPTV file with {} frames", self.frames.len())
-//    }
-//}
-pub struct FrameHeaderV3 {
-    length: u32,
-    time_on: u32,
-    last_ffc_time: u32,
-    pixel_size: u8,
-}
-
-impl Default for FrameHeaderV3 {
-    fn default() -> Self {
-        FrameHeaderV3 {
-            length: 0,
-            time_on: 0,
-            last_ffc_time: 0,
-            pixel_size: 0,
-        }
-    }
-}
-
-impl FrameHeaderV3 {
-    pub fn as_slice(&self) -> &[u8] {
-        unsafe {
-            std::slice::from_raw_parts(
-                self as *const FrameHeaderV3 as *const u8,
-                std::mem::size_of_val(self),
-            )
-        }
-    }
 }
 
 #[repr(u8)]
@@ -477,54 +376,6 @@ impl From<u8> for FieldType {
             b'b' => LastFfcTempC,
             _ => Unknown,
         }
-    }
-}
-
-/// Unused
-
-// Need to serialise this:
-struct ClipHeader {
-    magic_bytes: [u8; 4],
-    version: u8,
-    timestamp: u64, // At time of recording start?
-    width: u32,
-    height: u32,
-    compression: u8, // None, zlib. zstd?
-    device_name: String,
-
-    motion_config: Option<String>,
-    preview_secs: Option<u8>,
-    latitude: Option<f32>,
-    longitude: Option<f32>,
-    loc_timestamp: Option<u64>,
-    altitude: Option<f32>,
-    accuracy: Option<f32>,
-
-    // Used to get dynamic range of clip for normalisation at runtime:
-    min_val: u16,
-    max_val: u16,
-}
-
-struct ClipToc {
-    num_frames: u32,
-    frames_per_iframe: u32,
-    fps: u8,
-    length: u32,
-    // length x u32 offsets into the compressed stream.
-}
-
-impl ClipHeader {
-    pub fn as_slice(&self) -> &[u8] {
-        unsafe {
-            std::slice::from_raw_parts(
-                self as *const ClipHeader as *const u8,
-                std::mem::size_of_val(self),
-            )
-        }
-    }
-
-    pub fn as_bytes(&self) -> Vec<u8> {
-        Vec::new()
     }
 }
 

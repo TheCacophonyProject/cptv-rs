@@ -1,11 +1,13 @@
-use cptv_common::{Cptv2Header, FieldType, CptvFrame};
-use crate::decoder::{CptvHeader, decode_frame_v2, get_dynamic_range};
-use nom::bytes::streaming::{tag, take};
-use wasm_bindgen::prelude::*;
-use nom::number::streaming::{le_f32, le_u32, le_u64, le_u8};
+use crate::decoder::CptvHeader;
+use cptv_common::{Cptv2Header, CptvFrame, FieldType, FrameData};
 #[allow(unused)]
 use log::{info, trace, warn};
-use crate::CptvPlayerContext;
+use nom::bytes::streaming::{tag, take};
+use nom::number::streaming::{le_f32, le_u32, le_u64, le_u8};
+use wasm_bindgen::prelude::*;
+
+// TODO(jon): Move most of this to cptv_common.  cptv_common might end up having
+// streaming and non-streaming versions, but I don't think we care too much at the moment.
 
 pub fn decode_cptv2_header(i: &[u8]) -> nom::IResult<&[u8], CptvHeader> {
     let mut meta = Cptv2Header::new();
@@ -93,7 +95,6 @@ pub fn decode_cptv2_header(i: &[u8]) -> nom::IResult<&[u8], CptvHeader> {
     Ok((outer, CptvHeader::V2(meta)))
 }
 
-
 #[wasm_bindgen]
 pub struct FrameHeaderV2 {
     pub time_on: u32,
@@ -102,102 +103,193 @@ pub struct FrameHeaderV2 {
     pub has_next_frame: bool,
 }
 
-pub fn get_raw_frame_v2(context: &mut CptvPlayerContext) -> FrameHeaderV2 {
-    let mut frame_header = FrameHeaderV2 {
+pub fn decode_frame_header_v2(
+    data: &[u8],
+    width: usize,
+    height: usize,
+) -> nom::IResult<&[u8], (&[u8], CptvFrame)> {
+    let (i, val) = take(1usize)(data)?;
+    let (_, _) = tag(b"F")(val)?;
+    let (i, num_frame_fields) = le_u8(i)?;
+    //info!("num frame fields {}", num_frame_fields);
+    let mut frame = CptvFrame {
         time_on: 0,
-        last_ffc_time: 0,
-        frame_number: 0,
-        has_next_frame: false,
+        bit_width: 0,
+        frame_size: 0,
+        last_ffc_time: None,
+        last_ffc_temp_c: None,
+        frame_temp_c: None,
+        is_background_frame: false,
+        image_data: FrameData::with_dimensions(width, height),
     };
-    // We only use the first block for V2
-    //info!("Get frame {}", number);
-    // Read the frame out of the data:
-    let frame = {
-        assert!(
-            context.playback_info.offset_in_block <= context.iframe_blocks[0].len(),
-            "Offset is wrong {} vs {}",
-            context.playback_info.offset_in_block,
-            context.iframe_blocks[0].len()
-        );
-        if let Ok((remaining, frame)) =
-        decode_frame_v2(context.iframes.last(), &context.iframe_blocks[0][context.playback_info.offset_in_block..])
-        {
-            //image_data.copy_from_slice(frame.image_data.as_slice());
-            Some((remaining, frame))
-        } else {
-            None
-        }
-    };
+    let mut outer = i;
+    for _ in 0..num_frame_fields as usize {
+        let (i, field_length) = le_u8(outer)?;
+        let (i, field_code) = le_u8(i)?;
+        let (i, val) = take(field_length)(i)?;
+        outer = i;
 
-    if let Some((remaining, frame)) = frame {
-        {
-            assert!(context.iframe_blocks[0].len() > remaining.len());
-            let offset = context.iframe_blocks[0].len() - remaining.len();
-            context.playback_info.offset_in_block = usize::min(context.iframe_blocks[0].len(), offset);
-            context.playback_info.prev_block = 0;
-            frame_header.last_ffc_time = 1;//frame.last_ffc_time; // FIXME
-            frame_header.time_on = frame.time_on;
-            frame_header.frame_number = context.playback_info.prev_frame as u32;
-            context.playback_info.prev_frame += 1;
+        // TODO(This should return a result/warn on the Unknown case
+        let fc = FieldType::from(field_code);
+
+        match fc {
+            FieldType::TimeOn => {
+                frame.time_on = le_u32(val)?.1;
+            }
+            FieldType::PixelBytes => {
+                frame.bit_width = le_u8(val)?.1;
+            }
+            FieldType::FrameSize => {
+                frame.frame_size = le_u32(val)?.1;
+            }
+            FieldType::LastFfcTime => {
+                // NOTE: Last ffc time is relative to time_on, so we need to adjust it accordingly
+                // when printing the value.
+                frame.last_ffc_time = Some(le_u32(val)?.1);
+            }
+            FieldType::LastFfcTempC => {
+                frame.last_ffc_temp_c = Some(le_f32(val)?.1);
+            }
+            FieldType::FrameTempC => {
+                frame.frame_temp_c = Some(le_f32(val)?.1);
+            }
+            FieldType::BackgroundFrame => {
+                frame.is_background_frame = le_u8(val)?.1 == 1;
+            }
+            _ => {
+                warn!(
+                    "Unknown frame field type '{}', length: {}",
+                    field_code as char, field_length
+                );
+            }
         }
-        context.frame_buffer = frame;
-    } else {
-        context.frame_buffer = CptvFrame::new();
-        // Restart playback at the beginning.
-        context.playback_info.offset_in_block = 0;
-        context.playback_info.prev_frame = 0;
     }
-    frame_header
+    assert!(frame.frame_size > 0);
+    let (i, data) = take(frame.frame_size as usize)(outer)?;
+    Ok((i, (data, frame)))
 }
 
-pub fn get_frame_v2(context: &mut CptvPlayerContext, number: u32, image_data: &mut [u8]) -> bool {
-    let mut has_next_frame = false;
-    let frame = {
-        assert!(
-            context.playback_info.offset_in_block <= context.iframe_blocks[0].len(),
-            "Offset is wrong {} vs {}",
-            context.playback_info.offset_in_block,
-            context.iframe_blocks[0].len()
-        );
-        let prev_frame = context.iframes.last();
-        if let Ok((remaining, frame)) = decode_frame_v2(prev_frame, &context.iframe_blocks[0][context.playback_info.offset_in_block..]) {
-            let image = &frame.image_data;
-            // Copy frame out to output:
-            let range = get_dynamic_range(image);
-            let min = *range.start() as u16;
-            let max = *range.end() as u16;
-            let inv_dynamic_range = 1.0 / (max - min) as f32;
-            let mut i = 0;
-            for y in 0..image.height() {
-                for x in 0..image.width() {
-                    let val = ((image[y][x] as u16 - min) as f32
-                        * inv_dynamic_range
-                        * 255.0) as u8;
-                    image_data[i + 0] = val;
-                    image_data[i + 1] = val;
-                    image_data[i + 2] = val;
-                    image_data[i + 3] = 255;
-                    i += 4;
-                }
-            }
-            Some((remaining, frame))
-        } else {
-            None
-        }
-    };
-    if let Some((remaining, frame)) = frame {
-        assert!(context.iframe_blocks[0].len() > remaining.len());
-        let offset = context.iframe_blocks[0].len() - remaining.len();
-        context.playback_info.offset_in_block = usize::min(context.iframe_blocks[0].len(), offset);
-        context.playback_info.prev_block = 0;
-        let next_frame = number + 1;
-        context.playback_info.prev_frame = next_frame as usize;
-        has_next_frame = true;
-        context.frame_buffer = frame;
-    } else {
-        context.frame_buffer = CptvFrame::new();
-        context.playback_info.offset_in_block = 0;
-    }
+fn decode_image_data_v2(
+    i: &[u8],
+    mut current_px: i32,
+    width: usize,
+    height: usize,
+    frame: &mut CptvFrame,
+    prev_frame: Option<&CptvFrame>,
+) {
+    match prev_frame {
+        Some(prev_frame) => {
+            let prev_px = prev_frame.image_data[0][0] as i32;
+            // Seed the initial pixel value
+            assert!(prev_px + current_px <= u16::MAX as i32);
+            assert!(prev_px + current_px >= 0);
+            frame.image_data[0][0] = (prev_px + current_px) as u16;
+            for (index, delta) in BitUnpacker::new(i, frame.bit_width)
+                .take((width * height) - 1)
+                .enumerate()
+            {
+                let index = index + 1;
+                let y = index / width;
+                let x = index % width;
+                let x = if y & 1 == 1 { width - x - 1 } else { x };
+                current_px += delta;
+                let prev_px = prev_frame.image_data[y][x] as i32;
 
-    has_next_frame
+                assert!(prev_px + current_px <= u16::MAX as i32);
+                assert!(prev_px + current_px >= 0);
+                let px = (prev_px + current_px) as u16;
+
+                // This keeps track of min/max.
+                frame.image_data.set(x, y, px);
+                assert!(y * width + x <= width * height);
+            }
+        }
+        None => {
+            // This is the first frame, so we don't need to use a previous frame
+            frame.image_data[0][0] = current_px as u16;
+            for (index, delta) in BitUnpacker::new(i, frame.bit_width)
+                .take((width * height) - 1)
+                .enumerate()
+            {
+                let index = index + 1;
+                let y = index / width;
+                let x = index % width;
+                let x = if y & 1 == 1 { width - x - 1 } else { x };
+                current_px += delta;
+                let px = current_px as u16;
+
+                // This keeps track of min/max.
+                frame.image_data.set(x, y, px);
+                assert!(y * width + x <= width * height);
+            }
+        }
+    }
+}
+
+pub fn unpack_frame_v2(prev_frame: Option<&CptvFrame>, data: &[u8], frame: &mut CptvFrame) {
+    let initial_px = {
+        let mut accum: i32 = 0;
+        accum |= (data[3] as i32) << 24;
+        accum |= (data[2] as i32) << 16;
+        accum |= (data[1] as i32) << 8;
+        accum |= data[0] as i32;
+        accum
+    };
+    decode_image_data_v2(
+        &data[4..],
+        initial_px,
+        frame.image_data.width(),
+        frame.image_data.height(),
+        frame,
+        prev_frame,
+    );
+}
+
+pub struct BitUnpacker<'a> {
+    input: &'a [u8],
+    offset: usize,
+    bit_width: u8,
+    num_bits: u8,
+    bits: u32,
+}
+
+impl<'a> BitUnpacker<'a> {
+    pub fn new(input: &'a [u8], bit_width: u8) -> BitUnpacker {
+        BitUnpacker {
+            input,
+            offset: 0,
+            bit_width,
+            num_bits: 0,
+            bits: 0,
+        }
+    }
+}
+
+#[inline(always)]
+fn twos_uncomp(v: u32, width: u8) -> i32 {
+    if v & (1 << (width - 1)) as u32 == 0 {
+        v as i32
+    } else {
+        -(((!v + 1) & ((1 << width as u32) - 1)) as i32)
+    }
+}
+
+impl<'a> Iterator for BitUnpacker<'a> {
+    type Item = i32;
+    fn next(&mut self) -> Option<Self::Item> {
+        while self.num_bits < self.bit_width {
+            match self.input.get(self.offset) {
+                Some(byte) => {
+                    self.bits |= (*byte as u32) << ((24 - self.num_bits) as u8) as u32;
+                    self.num_bits += 8;
+                }
+                None => return None,
+            }
+            self.offset += 1;
+        }
+        let out = twos_uncomp(self.bits >> (32 - self.bit_width) as u32, self.bit_width);
+        self.bits = self.bits << self.bit_width as u32;
+        self.num_bits -= self.bit_width;
+        Some(out)
+    }
 }
