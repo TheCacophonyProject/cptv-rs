@@ -9,7 +9,10 @@
   },
   "files": [
       "index.js",
-      "index.d.ts"
+      "index.d.ts",
+      "./pkg/index_bg.wasm",
+      "./pkg/index.js",
+      "./pkg/index.d.ts"
   ],
   "type": "module",
   "main": "index.js",
