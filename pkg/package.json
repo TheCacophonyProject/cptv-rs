@@ -1,0 +1,16 @@
+{
+  "name": "cptv-player",
+  "collaborators": [
+    "jon hardie <jon@cacophony.org.nz>"
+  ],
+  "version": "1.0.0",
+  "files": [
+    "index_bg.wasm",
+    "index.js",
+    "index.d.ts"
+  ],
+  "type": "module",
+  "module": "index.js",
+  "types": "index.d.ts",
+  "sideEffects": false
+}
