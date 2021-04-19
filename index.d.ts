@@ -34,8 +34,13 @@ declare class CptvPlayer {
     getFrameHeaderAtIndex(frameNum: number): CptvFrameHeader | null;
 
     /**
+     * Get the number of loaded playable frames in the file.
+     */
+    getLoadedFrames(): number | null;
+
+    /**
      * If the file stream has completed, this gives the total number
-     * of frames in the file *including* any background frame.
+     * of playable frames in the file (excluding any background frame).
      */
     getTotalFrames(): number | null;
 

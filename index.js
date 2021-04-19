@@ -179,6 +179,13 @@ export class CptvPlayer {
     return null;
   }
 
+  getLoadedFrames() {
+    if (!this.locked) {
+      return this.playerContext.totalFrames();
+    }
+    return null;
+  }
+
   getFrameHeaderAtIndex(frameNum) {
     if (this.locked) {
       return null;
