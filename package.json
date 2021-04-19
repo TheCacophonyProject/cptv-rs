@@ -10,9 +10,10 @@
   "files": [
       "index.js",
       "index.d.ts",
-      "./pkg/index_bg.wasm",
-      "./pkg/index.js",
-      "./pkg/index.d.ts"
+      "pkg/index_bg.wasm",
+      "pkg/index.js",
+      "pkg/index.d.ts",
+      "pkg/package.json"
   ],
   "type": "module",
   "main": "index.js",
