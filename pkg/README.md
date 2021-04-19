@@ -26,6 +26,16 @@ information.  That is up to the caller.
 Install:
 `npm i https://github.com/TheCacophonyProject/cptv-rs`
 
+You may need to add this snippet to your webpack config to stub out the modules referenced for usage via nodejs
+```
+resolve: {
+  fallback: {
+    fs,
+    module,
+  }
+}
+```
+
 ```
 import {CptvPlayer} from "cptv-player";
 const player = new CptvPlayer();

@@ -26,6 +26,16 @@ information.  That is up to the caller.
 Install:
 `npm i https://github.com/TheCacophonyProject/cptv-rs`
 
+You may need to add this snippet to your webpack config to stub out the modules referenced for usage via nodejs
+```
+resolve: {
+  fallback: {
+    fs,
+    module,
+  }
+}
+```
+
 ```
 import {CptvPlayer} from "cptv-player";
 const player = new CptvPlayer();
@@ -88,3 +98,5 @@ Get the Rust compiler by following the instructions here: `https://rustup.rs/`
 Get wasm-pack here: `https://rustwasm.github.io/wasm-pack/`
 
 Compile the wasm: `npm run build`
+
+Add `"type": "module"` to the generated `pkg/package.json` file, since wasm-pack doesn't add this, and node needs it.

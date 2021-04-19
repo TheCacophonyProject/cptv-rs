@@ -37,6 +37,11 @@ default = ["cptv2-support"]
 cptv2-support = ["libflate"]
 cptv3-support = ["ruzstd"]
 
+[profile.release]
+lto = true
+opt-level='s'
+panic = "abort"
+
 [package.metadata.wasm-pack.profile.release]
 # Unset this if wasm-opt tool is available on your platform to further optimise file-size of generated wasm blob.
 wasm-opt = false
