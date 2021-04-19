@@ -3,5 +3,5 @@
 *.cptv
 *.mp4
 /cptv-files
-*.DS_Store
+.DS_Store
 Cargo.lock
