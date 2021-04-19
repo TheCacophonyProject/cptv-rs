@@ -1,7 +1,5 @@
 /target
-**/*.rs.bk
-/out/
-/20190922-021916/
 /.idea
 *.cptv
 *.mp4
+/cptv-files

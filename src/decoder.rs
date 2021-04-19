@@ -1,4 +1,4 @@
-use cptv_common::{Cptv2Header, Cptv3Header};
+use crate::v2::types::{Cptv2Header, Cptv3Header};
 use nom::bytes::streaming::{tag, take};
 use nom::error::{ErrorKind, ParseError};
 use nom::number::streaming::le_u8;
@@ -9,9 +9,10 @@ use crate::v2::decode_cptv2_header;
 #[cfg(feature = "cptv3-support")]
 use crate::v3::decode_cptv3_header;
 
-#[derive(Debug)]
 pub enum CptvHeader {
     UNINITIALISED,
+
+    #[allow(unused)]
     V3(Cptv3Header),
     V2(Cptv2Header),
 }

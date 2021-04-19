@@ -1,12 +1,15 @@
 {
   "name": "cptv-player",
   "collaborators": [
-    "jon hardie <jon@hardiesoft.com>"
+    "jon hardie <jon@cacophony.org.nz>"
   ],
-  "version": "0.1.0",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "wasm-pack build --target web --out-name index"
+  },
   "files": [
-    "index.js",
-    "index.d.ts"
+      "index.js",
+      "index.d.ts"
   ],
   "type": "module",
   "main": "index.js",

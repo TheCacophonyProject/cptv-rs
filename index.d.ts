@@ -13,8 +13,9 @@ declare class CptvPlayer {
      * NodeJS usage only:
      * Initialise a new player with a local file.  Uses readFileAsync to stream the CPTV file.
      * @param filePath (String)
+     * @returns True on success, or an error string on failure (String | Boolean)
      */
-    initWithCptvFile(filePath: string): Promise<void>;
+    initWithCptvFile(filePath: string): Promise<string | boolean>;
 
     /**
      * Returns the frame data for the frame at index `frameNum` indexed from the

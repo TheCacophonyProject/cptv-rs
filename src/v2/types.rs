@@ -1,4 +1,3 @@
-use chrono::NaiveDateTime;
 use core::fmt;
 #[allow(unused)]
 use log::{info, trace, warn};
@@ -65,40 +64,8 @@ impl Cptv2Header {
     }
 }
 
-impl Debug for Cptv2Header {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Cptv2Header")
-            .field(
-                "timestamp",
-                &NaiveDateTime::from_timestamp((self.timestamp as f64 / 1000000.0) as i64, 0),
-            )
-            .field("width", &self.width)
-            .field("height", &self.height)
-            .field("compression", &self.compression)
-            .field("device_name", &self.device_name)
-            .field("fps", &self.fps)
-            .field("brand", &self.brand)
-            .field("model", &self.model)
-            .field("device_id", &self.device_id)
-            .field("serial_number", &self.serial_number)
-            .field("firmware_version", &self.firmware_version)
-            .field(
-                "motion_config",
-                &self.motion_config.as_ref().unwrap_or(&String::from("None")),
-            )
-            .field("preview_secs", &self.preview_secs)
-            .field("latitude", &self.latitude)
-            .field("longitude", &self.longitude)
-            .field("loc_timestamp", &self.loc_timestamp)
-            .field("altitude", &self.altitude)
-            .field("accuracy", &self.accuracy)
-            .field("has_background_frame", &self.has_background_frame)
-            .finish()
-    }
-}
-
 // Cptv3 header includes the v2 header + additional fields to allow seeking.
-#[derive(Debug)]
+// Possible future work to incorporate this into our player.
 pub struct Cptv3Header {
     pub v2: Cptv2Header,
     pub min_value: u16,
@@ -109,6 +76,7 @@ pub struct Cptv3Header {
 }
 
 impl Cptv3Header {
+    #[allow(unused)]
     pub fn new() -> Cptv3Header {
         Cptv3Header {
             v2: Cptv2Header::new(),
@@ -164,20 +132,19 @@ impl FrameData {
 
     pub fn set(&mut self, x: usize, y: usize, val: u16) {
         // Ignore edge pixels for this?
-
         self.max = u16::max(self.max, val);
         self.min = u16::min(self.min, val);
         self[y][x] = val;
     }
 
     // This was a function made for fixing up our "black pixel" syncing offset issues
+    #[allow(unused)]
     pub fn offset(&self, offset: usize) -> FrameData {
         let mut frame = FrameData::with_dimensions(self.width, self.height);
         let mut pixels = self.data.iter().skip(offset);
         for y in 0..frame.height() {
             for x in 0..frame.width() {
                 let pixel = *pixels.next().unwrap_or(&0u16);
-                //assert!(pixel >= 0);
                 frame[y][x] = pixel;
             }
         }
@@ -205,7 +172,6 @@ pub struct CptvFrame {
     #[serde(rename = "timeOnMs")]
     pub time_on: u32,
 
-    // Is bit_width needed?  Is frame_size
     #[serde(skip_serializing)]
     pub bit_width: u8,
     #[serde(skip_serializing)]
@@ -228,7 +194,7 @@ pub struct CptvFrame {
 }
 
 impl CptvFrame {
-    pub fn new() -> CptvFrame {
+    pub fn new_with_dimensions(width: usize, height: usize) -> CptvFrame {
         CptvFrame {
             time_on: 0,
             bit_width: 0,
@@ -237,7 +203,7 @@ impl CptvFrame {
             last_ffc_temp_c: None,
             frame_temp_c: None,
             is_background_frame: false,
-            image_data: FrameData::with_dimensions(0, 0),
+            image_data: FrameData::with_dimensions(width, height),
         }
     }
 }
@@ -286,16 +252,6 @@ impl Debug for CptvFrame {
     }
 }
 
-pub struct Cptv2 {
-    pub meta: Cptv2Header,
-    pub frames: Vec<CptvFrame>,
-}
-
-pub struct Cptv3 {
-    pub meta: Cptv3Header,
-    pub frames: Vec<CptvFrame>,
-}
-
 #[repr(u8)]
 #[derive(PartialEq, Debug)]
 pub enum FieldType {
@@ -338,104 +294,43 @@ pub enum FieldType {
     Unknown = b';',
 }
 
-impl From<u8> for FieldType {
-    fn from(val: u8) -> Self {
+impl From<char> for FieldType {
+    fn from(val: char) -> Self {
         use FieldType::*;
         match val {
-            b'H' => Header,
-            b'T' => Timestamp,
-            b'X' => Width,
-            b'Y' => Height,
-            b'C' => Compression,
-            b'D' => DeviceName,
-            b'E' => Model,
-            b'B' => Brand,
-            b'I' => DeviceID,
-            b'M' => MotionConfig,
-            b'P' => PreviewSecs,
-            b'L' => Latitude,
-            b'O' => Longitude,
-            b'S' => LocTimestamp,
-            b'A' => Altitude,
-            b'U' => Accuracy,
-            b'R' => MinValue,
-            b'W' => MaxValue,
-            b'N' => CameraSerial,
-            b'V' => FirmwareVersion,
-            b'Q' => TableOfContents,
-            b'J' => NumFrames,
-            b'Z' => FrameRate,
-            b'G' => FramesPerIframe,
-            b'F' => FrameHeader,
-            b'g' => BackgroundFrame,
-            b'w' => PixelBytes,
-            b'f' => FrameSize,
-            b'c' => LastFfcTime,
-            b't' => TimeOn,
-            b'a' => FrameTempC,
-            b'b' => LastFfcTempC,
+            'H' => Header,
+            'T' => Timestamp,
+            'X' => Width,
+            'Y' => Height,
+            'C' => Compression,
+            'D' => DeviceName,
+            'E' => Model,
+            'B' => Brand,
+            'I' => DeviceID,
+            'M' => MotionConfig,
+            'P' => PreviewSecs,
+            'L' => Latitude,
+            'O' => Longitude,
+            'S' => LocTimestamp,
+            'A' => Altitude,
+            'U' => Accuracy,
+            'R' => MinValue,
+            'W' => MaxValue,
+            'N' => CameraSerial,
+            'V' => FirmwareVersion,
+            'Q' => TableOfContents,
+            'J' => NumFrames,
+            'Z' => FrameRate,
+            'G' => FramesPerIframe,
+            'F' => FrameHeader,
+            'g' => BackgroundFrame,
+            'w' => PixelBytes,
+            'f' => FrameSize,
+            'c' => LastFfcTime,
+            't' => TimeOn,
+            'a' => FrameTempC,
+            'b' => LastFfcTempC,
             _ => Unknown,
         }
     }
-}
-
-#[inline(always)]
-fn average_2(a: i32, b: i32) -> i16 {
-    ((a + b) / 2) as i16
-}
-
-pub fn predict_left(data: &FrameData, x: usize, y: usize) -> i16 {
-    let left = if x == 0 {
-        if y == 0 {
-            0
-        } else {
-            data[y - 1][x]
-        }
-    } else {
-        data[y][x - 1]
-    };
-    let top = if y == 0 { 0 } else { data[y - 1][x] };
-    let top_left = if y == 0 || x == 0 {
-        left
-    } else {
-        data[y - 1][x - 1]
-    };
-    let top_right = if x == data.width() - 1 || y == 0 {
-        top
-    } else {
-        data[y - 1][x + 1]
-    };
-    average_2(
-        average_2(left as i32, top_left as i32) as i32,
-        average_2(top as i32, top_right as i32) as i32,
-    )
-    //0
-}
-
-pub fn predict_right(data: &FrameData, x: usize, y: usize) -> i16 {
-    let right = if x == data.width() - 1 {
-        if y == 0 {
-            0
-        } else {
-            data[y - 1][x]
-        }
-    } else {
-        data[y][x + 1]
-    };
-    let top = if y == 0 { 0 } else { data[y - 1][x] };
-    let top_left = if y == 0 || x == 0 {
-        right
-    } else {
-        data[y - 1][x - 1]
-    };
-    let top_right = if x == data.width() - 1 || y == 0 {
-        top
-    } else {
-        data[y - 1][x + 1]
-    };
-    average_2(
-        average_2(right as i32, top_left as i32) as i32,
-        average_2(top as i32, top_right as i32) as i32,
-    )
-    //0
 }

@@ -1,10 +1,12 @@
 use crate::decoder::CptvHeader;
-use cptv_common::{Cptv2Header, CptvFrame, FieldType, FrameData};
+
+pub(crate) mod types;
 #[allow(unused)]
 use log::{info, trace, warn};
-use nom::bytes::streaming::{tag, take};
+use nom::bytes::streaming::take;
+use nom::character::streaming::char;
 use nom::number::streaming::{le_f32, le_u32, le_u64, le_u8};
-use wasm_bindgen::prelude::*;
+use types::{Cptv2Header, CptvFrame, FieldType};
 
 // TODO(jon): Move most of this to cptv_common.  cptv_common might end up having
 // streaming and non-streaming versions, but I don't think we care too much at the moment.
@@ -12,18 +14,14 @@ use wasm_bindgen::prelude::*;
 pub fn decode_cptv2_header(i: &[u8]) -> nom::IResult<&[u8], CptvHeader> {
     let mut meta = Cptv2Header::new();
     let (i, val) = take(1usize)(i)?;
-    let (_, _) = tag(b"H")(val)?;
+    let (_, _) = char('H')(val)?;
     let (i, num_header_fields) = le_u8(i)?;
-    //info!("num header fields {}", num_header_fields);
     let mut outer = i;
     for _ in 0..num_header_fields {
-        // TODO(jon): Fix order of this in cptv3 version
         let (i, field_length) = le_u8(outer)?;
-        let (i, field) = le_u8(i)?;
+        let (i, field) = char(i[0] as char)(i)?;
         let (i, val) = take(field_length)(i)?;
         outer = i;
-        // info!("{}", field_length);
-        // info!("{:?}", field as char);
         let field_type = FieldType::from(field);
         match field_type {
             FieldType::Timestamp => {
@@ -84,23 +82,11 @@ pub fn decode_cptv2_header(i: &[u8]) -> nom::IResult<&[u8], CptvHeader> {
                 meta.has_background_frame = Some(has_background_frame == 1);
             }
             _ => {
-                warn!(
-                    "Unknown header field type {}, {}",
-                    field as char, field_length
-                );
-                //std::process::abort();
+                warn!("Unknown header field type {}, {}", field, field_length);
             }
         }
     }
     Ok((outer, CptvHeader::V2(meta)))
-}
-
-#[wasm_bindgen]
-pub struct FrameHeaderV2 {
-    pub time_on: u32,
-    pub last_ffc_time: u32,
-    pub frame_number: u32,
-    pub has_next_frame: bool,
 }
 
 pub fn decode_frame_header_v2(
@@ -109,29 +95,17 @@ pub fn decode_frame_header_v2(
     height: usize,
 ) -> nom::IResult<&[u8], (&[u8], CptvFrame)> {
     let (i, val) = take(1usize)(data)?;
-    let (_, _) = tag(b"F")(val)?;
+    let (_, _) = char('F')(val)?;
     let (i, num_frame_fields) = le_u8(i)?;
     //info!("num frame fields {}", num_frame_fields);
-    let mut frame = CptvFrame {
-        time_on: 0,
-        bit_width: 0,
-        frame_size: 0,
-        last_ffc_time: None,
-        last_ffc_temp_c: None,
-        frame_temp_c: None,
-        is_background_frame: false,
-        image_data: FrameData::with_dimensions(width, height),
-    };
+    let mut frame = CptvFrame::new_with_dimensions(width, height);
     let mut outer = i;
     for _ in 0..num_frame_fields as usize {
         let (i, field_length) = le_u8(outer)?;
-        let (i, field_code) = le_u8(i)?;
+        let (i, field_code) = char(i[0] as char)(i)?;
         let (i, val) = take(field_length)(i)?;
         outer = i;
-
-        // TODO(This should return a result/warn on the Unknown case
         let fc = FieldType::from(field_code);
-
         match fc {
             FieldType::TimeOn => {
                 frame.time_on = le_u32(val)?.1;
@@ -164,7 +138,7 @@ pub fn decode_frame_header_v2(
             }
         }
     }
-    assert!(frame.frame_size > 0);
+    debug_assert!(frame.frame_size > 0);
     let (i, data) = take(frame.frame_size as usize)(outer)?;
     Ok((i, (data, frame)))
 }
@@ -245,6 +219,15 @@ pub fn unpack_frame_v2(prev_frame: Option<&CptvFrame>, data: &[u8], frame: &mut 
     );
 }
 
+#[inline(always)]
+fn reverse_twos_complement(v: u32, width: u8) -> i32 {
+    if v & (1 << (width - 1)) as u32 == 0 {
+        v as i32
+    } else {
+        -(((!v + 1) & ((1 << width as u32) - 1)) as i32)
+    }
+}
+
 pub struct BitUnpacker<'a> {
     input: &'a [u8],
     offset: usize,
@@ -265,15 +248,6 @@ impl<'a> BitUnpacker<'a> {
     }
 }
 
-#[inline(always)]
-fn twos_uncomp(v: u32, width: u8) -> i32 {
-    if v & (1 << (width - 1)) as u32 == 0 {
-        v as i32
-    } else {
-        -(((!v + 1) & ((1 << width as u32) - 1)) as i32)
-    }
-}
-
 impl<'a> Iterator for BitUnpacker<'a> {
     type Item = i32;
     fn next(&mut self) -> Option<Self::Item> {
@@ -287,7 +261,8 @@ impl<'a> Iterator for BitUnpacker<'a> {
             }
             self.offset += 1;
         }
-        let out = twos_uncomp(self.bits >> (32 - self.bit_width) as u32, self.bit_width);
+        let out =
+            reverse_twos_complement(self.bits >> (32 - self.bit_width) as u32, self.bit_width);
         self.bits = self.bits << self.bit_width as u32;
         self.num_bits -= self.bit_width;
         Some(out)
