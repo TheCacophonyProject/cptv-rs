@@ -3,12 +3,14 @@
   "collaborators": [
     "jon hardie <jon@cacophony.org.nz>"
   ],
-  "version": "1.0.0",
+  "version": "1.0.3",
   "files": [
     "index_bg.wasm",
     "index.js",
     "index.d.ts"
   ],
+  "main": "index.js",
+  "type": "module",
   "module": "index.js",
   "types": "index.d.ts",
   "sideEffects": false

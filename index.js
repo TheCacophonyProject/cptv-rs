@@ -32,7 +32,7 @@ const FakeReader = function (bytes) {
   state.offset = 0;
   const length = bytes.byteLength;
   // How many reader chunks to split the file into
-  const numParts = 100;
+  const numParts = 5;
   const percentages = length / numParts;
   for (let i = 0; i < numParts; i++) {
     state.offsets.push(Math.ceil(percentages * i));
@@ -157,10 +157,13 @@ export class CptvPlayer {
     const unlocker = new Unlocker();
     await this.lockIsUncontended(unlocker);
     this.locked = true;
-    this.playerContext = await cptvPlayer.CptvPlayerContext.fetchHeader(this.playerContext);
+    if (this.playerContext && this.playerContext.ptr) {
+      this.playerContext = await cptvPlayer.CptvPlayerContext.fetchHeader(this.playerContext);
+    }
+    const header = this.playerContext.getHeader();
     unlocker.unlock();
     this.locked = false;
-    return this.playerContext.getHeader();
+    return header;
   }
 
   getFrameAtIndex(frameNum) {
@@ -185,14 +188,14 @@ export class CptvPlayer {
   }
 
   getLoadedFrames() {
-    if (!this.locked) {
+    if (!this.locked && this.playerContext && this.playerContext.ptr) {
       return this.playerContext.totalFrames();
     }
     return null;
   }
 
   getFrameHeaderAtIndex(frameNum) {
-    if (this.locked) {
+    if (this.locked || (!this.playerContext || !this.playerContext.ptr)) {
       return null;
     }
     const header = this.playerContext.getFrameHeader(frameNum);
@@ -202,17 +205,20 @@ export class CptvPlayer {
   }
 
   getBackgroundFrame() {
-    const frameData = this.playerContext.getBackgroundFrame();
-    if (frameData.length === 0) {
-      return null;
+    if (!this.locked && this.playerContext && this.playerContext.ptr) {
+      const frameData = this.playerContext.getBackgroundFrame();
+      if (frameData.length === 0) {
+        return null;
+      }
+      const min = this.playerContext.getMinValue();
+      const max = Math.max(this.playerContext.getMaxValue(), min + AVERAGE_HEADROOM_OVER_BACKGROUND);
+      return {min, max, data: frameData};
     }
-    const min = this.playerContext.getMinValue();
-    const max = Math.max(this.playerContext.getMaxValue(), min + AVERAGE_HEADROOM_OVER_BACKGROUND);
-    return { min, max, data: frameData };
+    return null;
   }
 
   getLoadProgress() {
-    if (this.locked) {
+    if (this.locked || (!this.playerContext || !this.playerContext.ptr)) {
       return null;
     }
     // This doesn't actually tell us how much has downloaded, just how much has been lazily read.
