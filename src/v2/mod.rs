@@ -19,7 +19,8 @@ pub fn decode_cptv2_header(i: &[u8]) -> nom::IResult<&[u8], CptvHeader> {
     let mut outer = i;
     for _ in 0..num_header_fields {
         let (i, field_length) = le_u8(outer)?;
-        let (i, field) = char(i[0] as char)(i)?;
+        let (i, field) = take(1usize)(i)?;
+        let (_, field) = char(field[0] as char)(field)?;
         let (i, val) = take(field_length)(i)?;
         outer = i;
         let field_type = FieldType::from(field);
@@ -102,7 +103,8 @@ pub fn decode_frame_header_v2(
     let mut outer = i;
     for _ in 0..num_frame_fields as usize {
         let (i, field_length) = le_u8(outer)?;
-        let (i, field_code) = char(i[0] as char)(i)?;
+        let (i, field) = take(1usize)(i)?;
+        let (_, field_code) = char(field[0] as char)(field)?;
         let (i, val) = take(field_length)(i)?;
         outer = i;
         let fc = FieldType::from(field_code);

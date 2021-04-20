@@ -354,7 +354,7 @@ impl CptvPlayerContext {
     pub fn get_total_frames(&self) -> usize {
         match &self.header_info {
             CptvHeader::V2(h) => match h.has_background_frame {
-                Some(_) => self.frames.len() - 1,
+                Some(_) => isize::max(0, self.frames.len() as isize - 1) as usize,
                 None => self.frames.len(),
             },
             _ => 0,

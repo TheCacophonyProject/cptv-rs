@@ -98,3 +98,5 @@ Get the Rust compiler by following the instructions here: `https://rustup.rs/`
 Get wasm-pack here: `https://rustwasm.github.io/wasm-pack/`
 
 Compile the wasm: `npm run build`
+
+Add `"type": "module"` to the generated `pkg/package.json` file, since wasm-pack doesn't add this, and node needs it.

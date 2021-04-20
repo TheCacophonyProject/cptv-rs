@@ -59,15 +59,17 @@ const FakeReader = function (bytes) {
 
 // TODO(jon): This differs depending on whether the sensor is lepton 3 or 3.5
 const AVERAGE_HEADROOM_OVER_BACKGROUND = 300;
+let initedWasm = false;
 
 export class CptvPlayer {
   async initWithCptvUrlAndSize(url, size) {
     const unlocker = new Unlocker();
     await this.lockIsUncontended(unlocker);
     this.locked = true;
-    if (!this.inited) {
+    if (!initedWasm) {
       await cptvPlayer.default();
-    } else {
+      initedWasm = true;
+    } else if (initedWasm && this.inited) {
       this.playerContext.free();
       this.reader && await this.reader.cancel();
     }
@@ -103,9 +105,10 @@ export class CptvPlayer {
     const unlocker = new Unlocker();
     await this.lockIsUncontended(unlocker);
     this.locked = true;
-    if (!this.inited) {
+    if (!initedWasm) {
       await cptvPlayer.default(wasm);
-    } else {
+      initedWasm = true;
+    } else if (initedWasm && this.inited) {
       this.playerContext.free();
       this.reader && await this.reader.cancel();
     }
@@ -130,7 +133,9 @@ export class CptvPlayer {
     const unlocker = new Unlocker();
     await this.lockIsUncontended(unlocker);
     this.locked = true;
-    this.playerContext = await cptvPlayer.CptvPlayerContext.seekToFrame(this.playerContext, frameNum);
+    if (this.playerContext && this.playerContext.ptr) {
+      this.playerContext = await cptvPlayer.CptvPlayerContext.seekToFrame(this.playerContext, frameNum);
+    }
     unlocker.unlock();
     this.locked = false;
   }
@@ -159,17 +164,17 @@ export class CptvPlayer {
   }
 
   getFrameAtIndex(frameNum) {
-    if (this.locked) {
-      return null;
+    if (!this.locked && this.playerContext && this.playerContext.ptr) {
+      const frameData = this.playerContext.getRawFrameN(frameNum);
+      if (frameData.length === 0) {
+        return null;
+      }
+      const min = this.playerContext.getMinValue();
+      const max = Math.max(this.playerContext.getMaxValue(), min + AVERAGE_HEADROOM_OVER_BACKGROUND);
+      // TODO(jon): Look into adaptive normalisation/histogram schemes
+      return {min, max, data: frameData};
     }
-    const frameData = this.playerContext.getRawFrameN(frameNum);
-    if (frameData.length === 0) {
-      return null;
-    }
-    const min = this.playerContext.getMinValue();
-    const max = Math.max(this.playerContext.getMaxValue(), min + AVERAGE_HEADROOM_OVER_BACKGROUND);
-    // TODO(jon): Look into adaptive normalisation/histogram schemes
-    return { min, max, data: frameData };
+    return null;
   }
 
   getTotalFrames() {
