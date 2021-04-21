@@ -22,7 +22,7 @@ pub fn decode_cptv_header(i: &[u8]) -> nom::IResult<&[u8], CptvHeader> {
     let (_, _) = tag(b"CPTV")(val)?;
     let (i, version) = le_u8(i)?;
     match version {
-        2 => decode_cptv2_header(i),
+        1 | 2 => decode_cptv2_header(i),
         3 => {
             {
                 #[cfg(feature = "cptv3-support")]

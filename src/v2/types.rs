@@ -40,13 +40,16 @@ pub struct Cptv2Header {
 
 impl Cptv2Header {
     pub fn new() -> Cptv2Header {
+        // NOTE: Set default values for things not included in
+        // older CPTVv1 files, which can otherwise be decoded as
+        // v2.
         Cptv2Header {
             timestamp: 0,
-            width: 0,
-            height: 0,
+            width: 160,
+            height: 120,
             compression: 0,
             device_name: "".to_string(),
-            fps: None,
+            fps: Some(9),
             brand: None,
             model: None,
             device_id: None,

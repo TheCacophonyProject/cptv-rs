@@ -14,7 +14,6 @@ use crate::v2::{decode_frame_header_v2, unpack_frame_v2};
 use libflate::non_blocking::gzip::Decoder;
 use std::io;
 use wasm_bindgen::JsCast;
-//use wasm_tracing_allocator::WasmTracingAllocator;
 mod decoder;
 
 struct DownloadedData {
@@ -330,7 +329,7 @@ impl CptvPlayerContext {
                                         // We're trying to read past the available frames.
                                         // Now we know how many frames there actually were in the video,
                                         // and can print that information.
-                                        info!("Stream completed with total frames {:?} (including any background frame)", context.total_frames().unwrap());
+                                        info!("Stream completed with total frames {:?}{}", context.total_frames().unwrap(), if context.has_background_frame() { " (plus 1 background frame)" } else { "" });
                                         break;
                                     }
                                     // Fetch more bytes and loop again.
@@ -348,6 +347,13 @@ impl CptvPlayerContext {
             }
         }
         Ok(context)
+    }
+
+    fn has_background_frame(&self) -> bool {
+        match &self.header_info {
+            CptvHeader::V2(h) => h.has_background_frame.is_some(),
+            _ => false
+        }
     }
 
     #[wasm_bindgen(js_name = totalFrames)]
@@ -492,8 +498,6 @@ impl CptvPlayerContext {
                             context.reader_mut().stream_ended = true;
                             context.downloaded_data.stream_ended = true;
                         }
-                    } else {
-                        info!("Stream ended");
                     }
                     return Ok((context, true));
                 }
@@ -537,10 +541,10 @@ impl CptvPlayerContext {
                                 info!("{}", &format!("kind {:?}", kind));
                                 break;
                             }
-                            nom::Err::Failure((_, kind)) => {
+                            nom::Err::Failure((i, kind)) => {
                                 return Err(JsValue::from(format!(
-                                    "Fatal error parsing CPTV header: {:?}",
-                                    kind
+                                    "Fatal error parsing CPTV header: {:?}, {}",
+                                    kind,i[0] as char
                                 )));
                             }
                         }

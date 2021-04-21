@@ -87,7 +87,8 @@ export class CptvPlayer {
         return true;
       } else {
         this.locked = false;
-        return (await this.response.json()).messages.pop();
+        const r = await this.response.json();
+        return (r.messages && r.messages.pop()) || r.message || "Unknown error";
       }
     } catch (e) {
       this.locked = false;
@@ -174,7 +175,6 @@ export class CptvPlayer {
       }
       const min = this.playerContext.getMinValue();
       const max = Math.max(this.playerContext.getMaxValue(), min + AVERAGE_HEADROOM_OVER_BACKGROUND);
-      // TODO(jon): Look into adaptive normalisation/histogram schemes
       return {min, max, data: frameData};
     }
     return null;
