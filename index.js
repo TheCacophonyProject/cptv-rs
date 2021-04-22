@@ -60,6 +60,14 @@ const FakeReader = function (bytes) {
 // TODO(jon): This differs depending on whether the sensor is lepton 3 or 3.5
 const AVERAGE_HEADROOM_OVER_BACKGROUND = 300;
 let initedWasm = false;
+let totalFrames = null;
+let fps = 9;
+
+const yieldToUI = () => {
+  return new Promise((resolve) => {
+    setTimeout(resolve, 0);
+  });
+};
 
 export class CptvPlayer {
   async initWithCptvUrlAndSize(url, size) {
@@ -80,6 +88,7 @@ export class CptvPlayer {
       if (this.response.status === 200) {
         this.reader = this.response.body.getReader();
         this.expectedSize = size;
+        totalFrames = null;
         this.playerContext = await cptvPlayer.CptvPlayerContext.newWithStream(this.reader, size);
         unlocker.unlock();
         this.inited = true;
@@ -116,6 +125,7 @@ export class CptvPlayer {
     this.reader = new FakeReader(file);
     this.expectedSize = file.length;
     try {
+      totalFrames = null;
       this.playerContext = await cptvPlayer.CptvPlayerContext.newWithStream(this.reader, file.length);
       unlocker.unlock();
       this.inited = true;
@@ -162,6 +172,7 @@ export class CptvPlayer {
       this.playerContext = await cptvPlayer.CptvPlayerContext.fetchHeader(this.playerContext);
     }
     const header = this.playerContext.getHeader();
+    fps = header.fps;
     unlocker.unlock();
     this.locked = false;
     return header;
@@ -224,4 +235,35 @@ export class CptvPlayer {
     // This doesn't actually tell us how much has downloaded, just how much has been lazily read.
     return this.playerContext.bytesLoaded() / this.expectedSize;
   }
+};
+
+export const CptvPlayerInstance = new CptvPlayer();
+
+export async function queueFrame(frameNum, bufferStateChanged) {
+  const availableFrames = CptvPlayerInstance.getLoadedFrames() || 0;
+  if (frameNum + 1 > availableFrames + fps) {
+    bufferStateChanged && bufferStateChanged(true);
+    await yieldToUI();
+    await CptvPlayerInstance.seekToFrame(frameNum);
+    bufferStateChanged && bufferStateChanged(false);
+  } else if (frameNum + 1 > availableFrames) {
+    await CptvPlayerInstance.seekToFrame(frameNum);
+  }
+  let frameData = CptvPlayerInstance.getFrameAtIndex(frameNum);
+  if (frameData === null) {
+    console.assert(CptvPlayerInstance.getTotalFrames() !== null);
+    totalFrames = CptvPlayerInstance.getTotalFrames();
+    frameNum = totalFrames - 1;
+    frameData = CptvPlayerInstance.getFrameAtIndex(frameNum);
+    console.assert(frameData !== null);
+  }
+  return { frameNum, frameData, totalFrames };
+}
+
+export async function ensureEntireClipIsDecoded() {
+  let frameNum = 0;
+  while (!totalFrames) {
+    await queueFrame(frameNum++);
+  }
+  return totalFrames;
 }
