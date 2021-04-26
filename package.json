@@ -3,7 +3,7 @@
   "collaborators": [
     "jon hardie <jon@cacophony.org.nz>"
   ],
-  "version": "1.0.4",
+  "version": "1.0.6",
   "scripts": {
     "build": "wasm-pack build --target web --out-name index"
   },
