@@ -3,7 +3,7 @@
   "collaborators": [
     "jon hardie <jon@cacophony.org.nz>"
   ],
-  "version": "1.0.1",
+  "version": "1.0.0",
   "files": [
     "index_bg.wasm",
     "index.js",

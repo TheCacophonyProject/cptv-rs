@@ -26,9 +26,9 @@ struct DownloadedData {
 }
 
 impl DownloadedData {
-    pub fn new_with_size_hint(size_hint: usize) -> DownloadedData {
+    pub fn new() -> DownloadedData {
         DownloadedData {
-            decoded: vec![0; size_hint],
+            decoded: vec![0; 100],
             first_frame_offset: None,
             stream_ended: false,
             gzip_ended: false,
@@ -153,7 +153,7 @@ impl CptvPlayerContext {
         // Init the console logging stuff on startup, so that wasm can print things
         // into the browser console.
         let mut context = CptvPlayerContext {
-            downloaded_data: DownloadedData::new_with_size_hint(size as usize * 3),
+            downloaded_data: DownloadedData::new(),
             gz_decoder: None,
             header_info: CptvHeader::UNINITIALISED,
             frames: Vec::new(),
