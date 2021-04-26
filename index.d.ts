@@ -21,6 +21,9 @@ declare class CptvPlayer {
      * Returns the frame data for the frame at index `frameNum` indexed from the
      * first playable frame (not including any background frame).  If the frame is out of
      * bounds, or has not yet been loaded from the stream, returns null.
+     * IMPORTANT: If you want to save this frames data for later, clone the Uint16Array, don't reference it,
+     * since this array is a view into wasm-owned memory, and may not be the same or exist at all at
+     * at later point in execution.
      * @param frameNum (Number)
      */
     getFrameAtIndex(frameNum: number): CptvFrame | null;
