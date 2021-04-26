@@ -87,6 +87,9 @@ export class CptvPlayer {
       this.response = await fetch(url);
       if (this.response.status === 200) {
         this.reader = this.response.body.getReader();
+        if (!size) {
+          size = Number(this.response.headers.get("Content-Length"));
+        }
         this.expectedSize = size;
         totalFrames = null;
         this.playerContext = await cptvPlayer.CptvPlayerContext.newWithStream(this.reader, size);
