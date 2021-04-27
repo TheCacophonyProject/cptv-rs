@@ -164,11 +164,12 @@ impl CptvPlayerContext {
 
         let mut reader = ResumableReader::new_with_capacity(size as usize);
         // Do the initial read from the stream
-        while reader.available < 2 {
-            // Make sure we get at least two bytes
-            context.get_bytes_from_stream(Some(&mut reader)).await?;
+        let mut stream_ended = false;
+        while reader.available < 2 && !stream_ended {
+            // Make sure we get at least two bytes, or fail if the stream is shorter
+            stream_ended = context.get_bytes_from_stream(Some(&mut reader)).await?;
         }
-        let has_gz_stream = reader.inner.get_ref()[0] == 0x1f && reader.inner.get_ref()[1] == 0x8b;
+        let has_gz_stream = reader.inner.get_ref().len() >= 2 && reader.inner.get_ref()[0] == 0x1f && reader.inner.get_ref()[1] == 0x8b;
         if has_gz_stream {
             context.gz_decoder = Some(Decoder::new(reader));
             Ok(context)

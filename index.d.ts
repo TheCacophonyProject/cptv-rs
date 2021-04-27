@@ -139,3 +139,22 @@ export interface CptvFrame {
      */
     data: Uint16Array;
 }
+
+/**
+ * Helper function to make sure entire clip is downloaded and decoded so that we
+ * know that the global dynamic range is known; useful for when we want to export
+ * an mp4 to share
+ */
+export function ensureEntireClipIsDecoded(): Promise<void>;
+
+/**
+ * Helper function to load a frame at a given index.
+ * @param frameNum (Number) frame number that we want to queue up to.
+ * @param bufferStateChanged (Function) Callback whenever buffering state changes
+ */
+export function queueFrame(frameNum: number, bufferStateChanged: () => void): Promise<{ frameNum: number, frameData: Uint16Array, totalFrames: number}>;
+
+/**
+ * Global instance of the player
+ */
+export const CptvPlayerInstance: CptvPlayer;

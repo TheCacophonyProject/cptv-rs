@@ -88,7 +88,7 @@ export class CptvPlayer {
       if (this.response.status === 200) {
         this.reader = this.response.body.getReader();
         if (!size) {
-          size = Number(this.response.headers.get("Content-Length"));
+          size = Number(this.response.headers.get("Content-Length")) || 0;
         }
         this.expectedSize = size;
         totalFrames = null;
@@ -99,8 +99,12 @@ export class CptvPlayer {
         return true;
       } else {
         this.locked = false;
-        const r = await this.response.json();
-        return (r.messages && r.messages.pop()) || r.message || "Unknown error";
+        try {
+          const r = await this.response.json();
+          return (r.messages && r.messages.pop()) || r.message || "Unknown error";
+        } catch (e) {
+          return await r.text();
+        }
       }
     } catch (e) {
       this.locked = false;
