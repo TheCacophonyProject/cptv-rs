@@ -42,7 +42,7 @@ pub fn decode_cptv2_header(i: &[u8]) -> nom::IResult<&[u8], CptvHeader> {
             }
 
             // Optional fields
-            FieldType::FrameRate => meta.fps = Some(le_u8(val)?.1),
+            FieldType::FrameRate => meta.fps = le_u8(val)?.1,
             FieldType::CameraSerial => meta.serial_number = Some(le_u32(val)?.1),
             FieldType::FirmwareVersion => {
                 meta.firmware_version = Some(String::from_utf8_lossy(val).into());
@@ -80,7 +80,7 @@ pub fn decode_cptv2_header(i: &[u8]) -> nom::IResult<&[u8], CptvHeader> {
             FieldType::BackgroundFrame => {
                 let has_background_frame = le_u8(val)?.1;
                 // NOTE: We expect this to always be 1 if present
-                meta.has_background_frame = Some(has_background_frame == 1);
+                meta.has_background_frame = has_background_frame == 1;
             }
             _ => {
                 warn!("Unknown header field type {}, {}", field, field_length);
@@ -98,7 +98,7 @@ pub fn decode_frame_header_v2(
     let (i, val) = take(1usize)(data)?;
     let (_, _) = char('F')(val)?;
     let (i, num_frame_fields) = le_u8(i)?;
-    //info!("num frame fields {}", num_frame_fields);
+
     let mut frame = CptvFrame::new_with_dimensions(width, height);
     let mut outer = i;
     for _ in 0..num_frame_fields as usize {
@@ -151,7 +151,7 @@ fn decode_image_data_v2(
     width: usize,
     height: usize,
     frame: &mut CptvFrame,
-    prev_frame: Option<&CptvFrame>,
+    prev_frame: &Option<CptvFrame>,
 ) {
     match prev_frame {
         Some(prev_frame) => {
@@ -202,7 +202,7 @@ fn decode_image_data_v2(
     }
 }
 
-pub fn unpack_frame_v2(prev_frame: Option<&CptvFrame>, data: &[u8], frame: &mut CptvFrame) {
+pub fn unpack_frame_v2(prev_frame: &Option<CptvFrame>, data: &[u8], frame: &mut CptvFrame) {
     let initial_px = {
         let mut accum: i32 = 0;
         accum |= (data[3] as i32) << 24;

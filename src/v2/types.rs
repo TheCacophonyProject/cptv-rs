@@ -15,7 +15,7 @@ pub struct Cptv2Header {
     #[serde(rename = "deviceName")]
     pub device_name: String,
 
-    pub fps: Option<u8>,
+    pub fps: u8,
     pub brand: Option<String>,
     pub model: Option<String>,
     #[serde(rename = "deviceId")]
@@ -35,7 +35,7 @@ pub struct Cptv2Header {
     pub altitude: Option<f32>,
     pub accuracy: Option<f32>,
     #[serde(rename = "hasBackgroundFrame")]
-    pub has_background_frame: Option<bool>,
+    pub has_background_frame: bool,
 }
 
 impl Cptv2Header {
@@ -49,7 +49,7 @@ impl Cptv2Header {
             height: 120,
             compression: 0,
             device_name: "".to_string(),
-            fps: Some(9),
+            fps: 9,
             brand: None,
             model: None,
             device_id: None,
@@ -62,7 +62,7 @@ impl Cptv2Header {
             loc_timestamp: None,
             altitude: None,
             accuracy: None,
-            has_background_frame: None,
+            has_background_frame: false,
         }
     }
 }
@@ -111,14 +111,6 @@ impl FrameData {
             min: u16::MAX,
             max: u16::MIN,
         }
-    }
-
-    pub fn min(&self) -> u16 {
-        self.min
-    }
-
-    pub fn max(&self) -> u16 {
-        self.max
     }
 
     pub fn width(&self) -> usize {

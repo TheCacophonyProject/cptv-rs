@@ -70,24 +70,21 @@ Install:
 `npm i https://github.com/TheCacophonyProject/cptv-rs`
 
 ```
-import {CptvPlayer} from "cptv-player";
+// Scan the file without unpacking individual frames, and return the header with a
+// duration in seconds for the file.
+
+import {CptvDecoder} from "../index.js";
 
 (async function() {
-  const player = new CptvPlayer();
-  const file = "20200925-054728.cptv";
-  await player.initWithCptvFile(file);
-  const header = await player.getHeader();
-  console.log(header);
-
-  // Decode all frames to end of file:
-  let frameNum = 0;
-  while (player.getTotalFrames() === null || frameNum < player.getTotalFrames() - 1) {
-    await player.seekToFrame(frameNum);
-    const frameHeader = player.getFrameHeaderAtIndex(frameNum);
-    const frame = player.getFrameAtIndex(frameNum);
-    frameNum++;
-  }
+  const start = performance.now();
+  const file = "<your cptv file>";
+  const decoder = new CptvDecoder();
+  const metadata = await decoder.getFileMetadata(new URL(file, import.meta.url).pathname);
+  decoder.close();
+  console.log("Metadata", metadata);
+  console.log("Duration (seconds)", metadata.duration);
 })();
+
 ```
 
 ## Building the wasm from source
@@ -98,5 +95,3 @@ Get the Rust compiler by following the instructions here: `https://rustup.rs/`
 Get wasm-pack here: `https://rustwasm.github.io/wasm-pack/`
 
 Compile the wasm: `npm run build`
-
-Add `"type": "module"` to the generated `pkg/package.json` file, since wasm-pack doesn't add this, and node needs it.

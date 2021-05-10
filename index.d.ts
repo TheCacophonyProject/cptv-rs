@@ -1,13 +1,20 @@
 /* tslint:disable */
 /* eslint-disable */
-declare class CptvPlayer {
+declare class CptvDecoder {
     /**
      * Initialises a new player and associated stream reader.
      * @param url (String)
      * @param size (Number)
      * @returns True on success, or an error string on failure (String | Boolean)
      */
-    initWithCptvUrlAndSize(url: string, size: number): Promise<string | boolean>;
+    initWithCptvUrlAndKnownSize(url: string, size: number): Promise<string | boolean>;
+
+    /**
+     * Initialises a new player and associated stream reader.
+     * @param url (String)
+     * @returns True on success, or an error string on failure (String | Boolean)
+     */
+    initWithCptvUrl(url: string): Promise<string | boolean>;
 
     /**
      * NodeJS usage only:
@@ -18,43 +25,31 @@ declare class CptvPlayer {
     initWithCptvFile(filePath: string): Promise<string | boolean>;
 
     /**
-     * Returns the frame data for the frame at index `frameNum` indexed from the
-     * first playable frame (not including any background frame).  If the frame is out of
-     * bounds, or has not yet been loaded from the stream, returns null.
-     * IMPORTANT: If you want to save this frames data for later, clone the Uint16Array, don't reference it,
-     * since this array is a view into wasm-owned memory, and may not be the same or exist at all at
-     * at later point in execution.
-     * @param frameNum (Number)
+     * Initialise a new player with an already loaded local file.
+     * @param fileBytes (Uint8Array)
+     * @returns True on success, or an error string on failure (String | Boolean)
      */
-    getFrameAtIndex(frameNum: number): CptvFrame | null;
+    initWithLocalCptvFile(fileBytes: Uint8Array): Promise<string | boolean>;
 
     /**
-     * Returns the frame header for the frame at index `frameNum` indexed from the
-     * first playable frame (not including any background frame).  If the frame is out of
-     * bounds, or has not yet been loaded from the stream, returns null.
-     * @param frameNum (Number)
+     * Get the header and duration in seconds of a local CPTV file given by filePath.
+     * This function reads and consumes the entire file, without decoding actual frames.
+     * @param filePath (String)
      */
-    getFrameHeaderAtIndex(frameNum: number): CptvFrameHeader | null;
+    getFileMetadata(filePath: string): Promise<CptvHeader>;
 
     /**
-     * Get the number of loaded playable frames in the file.
+     * Get the header and duration of a remote CPTV file given by url.
+     * This function reads and consumes the enture file, without decoding actual frames.
+     * @param url (String)
      */
-    getLoadedFrames(): number | null;
+    getStreamMetadata(url: string): Promise<CptvHeader>;
 
     /**
      * If the file stream has completed, this gives the total number
      * of playable frames in the file (excluding any background frame).
      */
-    getTotalFrames(): number | null;
-
-    /**
-     * Downloads enough of the CPTV file to be able to have `frameNum`
-     * If the file contains a background frame at the beginning, this is not included,
-     * so for example asking for frame 0 in that case would actually give the second
-     * frame in the file (which is the first "playable" frame)
-     * @param frameNum (Number)
-     */
-    seekToFrame(frameNum: number): Promise<void>;
+    getTotalFrames(): Promise<number | null>;
 
     /**
      * Get the header for the CPTV file as JSON.
@@ -63,14 +58,19 @@ declare class CptvPlayer {
     getHeader(): Promise<CptvHeader>;
 
     /**
-     * Return the background frame data of the CPTV file, if any
+     * Get the next frame in the sequence, if there is one.
      */
-    getBackgroundFrame(): CptvFrame | null;
+    getNextFrame(): Promise<CptvFrame | null>;
 
     /**
      * Stream load progress from 0..1
      */
-    getLoadProgress(): number;
+    getLoadProgress(): Promise<number>;
+
+    /**
+     * Terminate the decoder worker thread
+     */
+    close(): void;
 }
 
 export interface CptvHeader {
@@ -79,7 +79,7 @@ export interface CptvHeader {
     height: number;
     compression: number;
     deviceName: string;
-    fps: number | null;
+    fps: number;
     brand: string | null;
     model: string | null;
     deviceId: number | null;
@@ -92,7 +92,11 @@ export interface CptvHeader {
     locTimestamp: number | null;
     altitude: number | null;
     accuracy: number | null;
-    hasBackgroundFrame: boolean | null;
+    hasBackgroundFrame: boolean;
+    // Duration in seconds, *excluding* any background frame.  For compatibility with current
+    // durations stored in DB which *include* any background frame, the user may wish to add 1/fps seconds.
+    // Only set if we used one of the getFileMetadata|getStreamMetadata, and scan the entire file.
+    duration?: number;
 }
 
 export interface CptvFrameHeader {
@@ -112,49 +116,54 @@ export interface CptvFrameHeader {
          * Maximum value for this frame
          */
         max: number;
-
-        originalMax?: number;
     }
 }
 
 export interface CptvFrame {
     /**
-     * Used for normalisation of output:
-     * Min value for clip decoded so far in stream.  If stream is fully decoded this will be the min for
-     * the entire clip.
-     * NOTE: Frames that occur within 5 seconds of an FFC event do not contribute to global min/max, since
-     *  the values are all over the place.  For playback remap those values into the known sane range.
-     */
-    min: number;
-    /**
-     * Used for normalisation of output:
-     * Max value for clip decoded so far in stream.  If stream is fully decoded this will be the max for
-     * the entire clip.
-     * NOTE: Frames that occur within 5 seconds of an FFC event do not contribute to global min/max, since
-     *  the values are all over the place.  For playback remap those values into the known sane range.
-     */
-    max: number;
-    /**
      * Raw u16 data of `width` * `height` length where width and height can be found in the CptvHeader
      */
     data: Uint16Array;
+
+    /**
+     * Frame header
+     */
+    meta: CptvFrameHeader;
 }
 
 /**
- * Helper function to make sure entire clip is downloaded and decoded so that we
- * know that the global dynamic range is known; useful for when we want to export
- * an mp4 to share
+ * Helper function for rendering a raw frame into an Rgba destination buffer
+ * @param targetFrameBuffer (Uint8ClampedArray) - destination frame buffer.  Must be width * height * 4 length
+ * @param frame (Uint16Array) - Source raw frame of width * height uint16 pixels
+ * @param colourMap (Uint32Array) Array of Rgba colours in uin32 form for mapping into 0..255 space
+ * @param min (number) min value to use for normalisation
+ * @param max (number) max value to use for normalisation
  */
-export function ensureEntireClipIsDecoded(): Promise<void>;
+export function renderFrameIntoFrameBuffer(
+    targetFrameBuffer: Uint8ClampedArray,
+    frame: Uint16Array,
+    colourMap: Uint32Array,
+    min: number,
+    max: number
+): void;
 
 /**
- * Helper function to load a frame at a given index.
- * @param frameNum (Number) frame number that we want to queue up to.
- * @param bufferStateChanged (Function) Callback whenever buffering state changes
+ * Get the frame index at a given time offset, taking into account the presence of a background frame.
+ * @param time {Number}
+ * @param duration {Number}
+ * @param fps {Number}
+ * @param totalFramesIncludingBackground {Number}
+ * @param hasBackgroundFrame {Boolean}
  */
-export function queueFrame(frameNum: number, bufferStateChanged: () => void): Promise<{ frameNum: number, frameData: Uint16Array, totalFrames: number}>;
+export function getFrameIndexAtTime(
+    time: number,
+    duration: number,
+    fps: number,
+    totalFramesIncludingBackground: number | false,
+    hasBackgroundFrame: boolean
+): number;
 
 /**
- * Global instance of the player
+ * Default Colour maps to use for rendering frames on both front-end and back-end.
  */
-export const CptvPlayerInstance: CptvPlayer;
+export const ColourMaps: readonly [string, Uint32Array][];
