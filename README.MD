@@ -26,7 +26,7 @@ resolve: {
 You also may need to install webpack "worker-loader".
 
 ```
-import {CptvDecoder, renderFrameIntoFrameBuffer} from "cptv-decoder";
+import {CptvDecoder, renderFrameIntoFrameBuffer, ColourMaps} from "cptv-decoder";
 const decoder = new CptvDecoder();
 (async function() {
     const loadedPlayer = await decoder.initWithCptvUrlAndKnownSize(<url to cptv file>, <expected file size>);
@@ -64,6 +64,7 @@ const decoder = new CptvDecoder();
     
     // Render the frame into the buffer using a colourmap, and the min/max
     // of the frame to make sure it can be normalised properly.
+    const defaultColourmap = Colourmaps[0][1];
     renderFrameIntoFrameBuffer(
       frameBuffer,
       frame.data,
