@@ -10,18 +10,6 @@
     "node-example-read-all-frames": "node --no-warnings=ExperimentalWarnings --experimental-json-modules examples/read-all-frames.js",
     "node-example-read-metadata-and-duration": "node --no-warnings=ExperimentalWarnings --experimental-json-modules examples/get-file-metadata.js"
   },
-  "files": [
-    "index.js",
-    "index.d.ts",
-    "decoder.js",
-    "decoder.worker.js",
-    "DefaultColourmap.js",
-    "frameRenderUtils.js",
-    "pkg/index_bg.wasm",
-    "pkg/index.js",
-    "pkg/index.d.ts",
-    "pkg/package.json"
-  ],
   "dependencies": {
     "scale-color-perceptual": "^1.1.2"
   },
