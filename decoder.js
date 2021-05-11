@@ -126,10 +126,7 @@ export class CptvDecoderInterface {
     this.locked = true;
     if (!initedWasm) {
       if (createRequire) {
-        const require = createRequire(import.meta.url);
-        if (require) {
-          CptvPlayerContext = require("./pkg-node").CptvPlayerContext;
-        }
+        CptvPlayerContext = (await import("./pkg-node/index.js")).CptvPlayerContext;
       } else {
         CptvPlayerContext = (await import("./pkg/index.js")).CptvPlayerContext;
       }

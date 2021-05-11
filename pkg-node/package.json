@@ -10,7 +10,6 @@
     "index_bg.js",
     "index.d.ts"
   ],
-  "type": "module",
   "main": "index.js",
   "module": "index.js",
   "types": "index.d.ts",
