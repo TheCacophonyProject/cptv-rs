@@ -125,11 +125,13 @@ export class CptvDecoderInterface {
     await this.lockIsUncontended(unlocker);
     this.locked = true;
     if (!initedWasm) {
-      if (typeof window === "undefined") {
+      if (createRequire) {
         const require = createRequire(import.meta.url);
-        CptvPlayerContext = require("./pkg-node").CptvPlayerContext;
+        if (require) {
+          CptvPlayerContext = require("./pkg-node").CptvPlayerContext;
+        }
       } else {
-        CptvPlayerContext = (await import ("./pkg/index.js")).CptvPlayerContext;
+        CptvPlayerContext = (await import("./pkg/index.js")).CptvPlayerContext;
       }
       initedWasm = true;
     } else if (initedWasm && this.inited) {
