@@ -1,4 +1,5 @@
-import * as cptvPlayer from "./pkg/index.js";
+let CptvPlayerContext;
+
 /**
  * NOTE: For browser usage, these imports need to be stubbed
  *  out in your webpack config using:
@@ -72,7 +73,7 @@ export class CptvDecoderInterface {
     await this.lockIsUncontended(unlocker);
     this.locked = true;
     if (!initedWasm) {
-      await cptvPlayer.default();
+      CptvPlayerContext = (await import ("./pkg/index.js")).CptvPlayerContext;
       initedWasm = true;
     } else if (initedWasm && this.inited) {
       this.playerContext.free();
@@ -80,7 +81,7 @@ export class CptvDecoderInterface {
     }
     try {
       // Use this expired JWT token to test that failure case (usually when a page has been open too long)
-      //const oldJWT = "https://api.cacophony.org.nz/api/v1/signedUrl?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJfdHlwZSI6ImZpbGVEb3dubG9hZCIsImtleSI6InJhdy8yMDIxLzA0LzE1LzQ3MGU2YjY1LWZkOTgtNDk4Ny1iNWQ3LWQyN2MwOWIxODFhYSIsImZpbGVuYW1lIjoiMjAyMTA0MTUtMTE0MjE2LmNwdHYiLCJtaW1lVHlwZSI6ImFwcGxpY2F0aW9uL3gtY3B0diIsImlhdCI6MTYxODQ2MjUwNiwiZXhwIjoxNjE4NDYzMTA2fQ.p3RAOX7Ns52JqHWTMM5Se-Fn-UCyRtX2tveaGrRmiwo";
+      // const oldJWT = "https://api.cacophony.org.nz/api/v1/signedUrl?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJfdHlwZSI6ImZpbGVEb3dubG9hZCIsImtleSI6InJhdy8yMDIxLzA0LzE1LzQ3MGU2YjY1LWZkOTgtNDk4Ny1iNWQ3LWQyN2MwOWIxODFhYSIsImZpbGVuYW1lIjoiMjAyMTA0MTUtMTE0MjE2LmNwdHYiLCJtaW1lVHlwZSI6ImFwcGxpY2F0aW9uL3gtY3B0diIsImlhdCI6MTYxODQ2MjUwNiwiZXhwIjoxNjE4NDYzMTA2fQ.p3RAOX7Ns52JqHWTMM5Se-Fn-UCyRtX2tveaGrRmiwo";
       this.consumed = false;
       this.response = await fetch(url);
       if (this.response.status === 200) {
@@ -89,7 +90,7 @@ export class CptvDecoderInterface {
           size = Number(this.response.headers.get("Content-Length")) || 0;
         }
         this.expectedSize = size;
-        this.playerContext = await cptvPlayer.CptvPlayerContext.newWithStream(this.reader);
+        this.playerContext = await CptvPlayerContext.newWithStream(this.reader);
         unlocker.unlock();
         this.inited = true;
         this.locked = false;
@@ -113,7 +114,7 @@ export class CptvDecoderInterface {
     // Don't call this from a browser!
     const file = await fs.readFile(filePath);
     const require = createRequire(import.meta.url);
-    const path = require.resolve("./pkg/index_bg.wasm");
+    const path = require.resolve("./pkg-node/index_bg.wasm");
     const wasm = await fs.readFile(path);
     return this.initWithFileBytes(file, filePath, wasm);
   }
@@ -124,7 +125,12 @@ export class CptvDecoderInterface {
     await this.lockIsUncontended(unlocker);
     this.locked = true;
     if (!initedWasm) {
-      await cptvPlayer.default(wasm);
+      if (typeof window === "undefined") {
+        const require = createRequire(import.meta.url);
+        CptvPlayerContext = require("./pkg-node").CptvPlayerContext;
+      } else {
+        CptvPlayerContext = (await import ("./pkg/index.js")).CptvPlayerContext;
+      }
       initedWasm = true;
     } else if (initedWasm && this.inited) {
       this.playerContext.free();
@@ -134,7 +140,7 @@ export class CptvDecoderInterface {
     this.reader = new FakeReader(fileBytes, 100000);
     this.expectedSize = fileBytes.length;
     try {
-      this.playerContext = await cptvPlayer.CptvPlayerContext.newWithStream(this.reader);
+      this.playerContext = await CptvPlayerContext.newWithStream(this.reader);
       unlocker.unlock();
       this.inited = true;
       this.locked = false;
@@ -156,7 +162,7 @@ export class CptvDecoderInterface {
     await this.lockIsUncontended(unlocker);
     this.locked = true;
     if (this.playerContext && this.playerContext.ptr) {
-      this.playerContext = await cptvPlayer.CptvPlayerContext.fetchNextFrame(this.playerContext);
+      this.playerContext = await CptvPlayerContext.fetchNextFrame(this.playerContext);
     }
     unlocker.unlock();
     this.locked = false;
@@ -176,7 +182,7 @@ export class CptvDecoderInterface {
     await this.lockIsUncontended(unlocker);
     this.locked = true;
     if (this.playerContext && this.playerContext.ptr) {
-      this.playerContext = await cptvPlayer.CptvPlayerContext.countTotalFrames(this.playerContext);
+      this.playerContext = await CptvPlayerContext.countTotalFrames(this.playerContext);
       // We can't call any other methods that read frame data on this stream,
       // since we've exhausted it and thrown away the data after scanning for the info we want.
       this.consumed = true;
@@ -224,7 +230,7 @@ export class CptvDecoderInterface {
     await this.lockIsUncontended(unlocker);
     this.locked = true;
     if (this.playerContext && this.playerContext.ptr) {
-      this.playerContext = await cptvPlayer.CptvPlayerContext.fetchHeader(this.playerContext);
+      this.playerContext = await CptvPlayerContext.fetchHeader(this.playerContext);
     }
     const header = this.playerContext.getHeader();
     unlocker.unlock();

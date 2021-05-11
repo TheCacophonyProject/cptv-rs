@@ -1,5 +1,4 @@
-import {Worker} from "worker_threads";
-import DecoderWorker from "./decoder.worker.js";
+import {Worker as WorkerThread} from "worker_threads";
 export {ColourMaps, renderFrameIntoFrameBuffer, getFrameIndexAtTime} from "./frameRenderUtils.js";
 
 export class CptvDecoder {
@@ -14,10 +13,10 @@ export class CptvDecoder {
       resolver && resolver(data);
     };
     if (typeof window === "undefined") {
-      this.decoder = new Worker(new URL('decoder.worker.js', import.meta.url));
+      this.decoder = new WorkerThread(new URL('decoder.worker.js', import.meta.url));
       this.decoder.addListener.bind(this.decoder)("message", onMessage);
     } else {
-      this.decoder = new DecoderWorker();
+      this.decoder = new Worker(new URL('decoder.worker.js', import.meta.url), {type: "module"});
       this.decoder.onmessage = onMessage;
     }
   }

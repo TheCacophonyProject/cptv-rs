@@ -3,9 +3,10 @@
   "collaborators": [
     "jon hardie <jon@cacophony.org.nz>"
   ],
-  "version": "1.1.1",
+  "version": "1.1.2",
   "scripts": {
-    "build": "wasm-pack build --target web --out-name index",
+    "build-webpack": "wasm-pack build --out-name index",
+    "build-node": "wasm-pack build --target nodejs --out-name index --out-dir pkg-node",
     "node-example-read-all-frames": "node --no-warnings=ExperimentalWarnings --experimental-json-modules examples/read-all-frames.js",
     "node-example-read-metadata-and-duration": "node --no-warnings=ExperimentalWarnings --experimental-json-modules examples/get-file-metadata.js"
   },
