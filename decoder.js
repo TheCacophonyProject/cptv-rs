@@ -173,12 +173,16 @@ export class CptvDecoderInterface {
     this.locked = false;
     const frameData = this.playerContext.getNextFrame();
     const frameHeader = this.playerContext.getFrameHeader();
-    const sameFrameAsPrev = frameHeader && this.prevFrameHeader && frameHeader.timeOnMs === this.prevFrameHeader.timeOnMs;
-    if (sameFrameAsPrev && this.getTotalFrames() === null) {
+
+    // NOTE(jon): Work around a bug where the mlx sensor doesn't report timeOn times, just hardcodes 60000
+    if (frameHeader.imageData.width !== 32) {
+      const sameFrameAsPrev = frameHeader && this.prevFrameHeader && frameHeader.timeOnMs === this.prevFrameHeader.timeOnMs;
+      if (sameFrameAsPrev && this.getTotalFrames() === null) {
+        this.prevFrameHeader = frameHeader;
+        return await this.fetchNextFrame();
+      }
       this.prevFrameHeader = frameHeader;
-      return await this.fetchNextFrame();
     }
-    this.prevFrameHeader = frameHeader;
     if (frameData.length === 0) {
       return null;
     }
