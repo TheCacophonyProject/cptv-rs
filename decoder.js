@@ -72,6 +72,7 @@ export class CptvDecoderInterface {
     const unlocker = new Unlocker();
     await this.lockIsUncontended(unlocker);
     this.locked = true;
+    this.prevFrameHeader = null;
     if (!initedWasm) {
       CptvPlayerContext = (await import ("./pkg/index.js")).CptvPlayerContext;
       initedWasm = true;
@@ -113,16 +114,14 @@ export class CptvDecoderInterface {
   async initWithCptvFile(filePath) {
     // Don't call this from a browser!
     const file = await fs.readFile(filePath);
-    const require = createRequire(import.meta.url);
-    const path = require.resolve("./pkg-node/index_bg.wasm");
-    const wasm = await fs.readFile(path);
-    return this.initWithFileBytes(file, filePath, wasm);
+    return this.initWithFileBytes(file, filePath);
   }
 
   async initWithFileBytes(fileBytes, filePath = "", wasm) {
     // Don't call this from a browser!
     const unlocker = new Unlocker();
     await this.lockIsUncontended(unlocker);
+    this.prevFrameHeader = null;
     this.locked = true;
     if (!initedWasm) {
       if (createRequire) {
@@ -161,15 +160,28 @@ export class CptvDecoderInterface {
     await this.lockIsUncontended(unlocker);
     this.locked = true;
     if (this.playerContext && this.playerContext.ptr) {
-      this.playerContext = await CptvPlayerContext.fetchNextFrame(this.playerContext);
+      try {
+        this.playerContext = await CptvPlayerContext.fetchNextFrame(this.playerContext);
+      } catch (e) {
+        this.streamError = e;
+        return null;
+      }
+    } else {
+      console.warn("Fetch next failed");
     }
     unlocker.unlock();
     this.locked = false;
     const frameData = this.playerContext.getNextFrame();
+    const frameHeader = this.playerContext.getFrameHeader();
+    const sameFrameAsPrev = frameHeader && this.prevFrameHeader && frameHeader.timeOnMs === this.prevFrameHeader.timeOnMs;
+    if (sameFrameAsPrev && this.getTotalFrames() === null) {
+      this.prevFrameHeader = frameHeader;
+      return await this.fetchNextFrame();
+    }
+    this.prevFrameHeader = frameHeader;
     if (frameData.length === 0) {
       return null;
     }
-    const frameHeader = this.playerContext.getFrameHeader();
     return { data: new Uint16Array(frameData), meta: frameHeader };
   }
 
@@ -197,7 +209,8 @@ export class CptvDecoderInterface {
     const duration = (1 / header.fps) * totalFrameCount;
     return {
       ...header,
-      duration
+      duration,
+      totalFrames: totalFrameCount,
     }
   }
 
@@ -238,6 +251,9 @@ export class CptvDecoderInterface {
   }
 
   getTotalFrames() {
+    if (this.streamError) {
+      return 1;
+    }
     if (!this.locked && this.inited && this.playerContext.ptr && this.playerContext.streamComplete()) {
       return this.playerContext.totalFrames();
     }
@@ -250,5 +266,9 @@ export class CptvDecoderInterface {
     }
     // This doesn't actually tell us how much has downloaded, just how much has been lazily read.
     return this.playerContext.bytesLoaded() / this.expectedSize;
+  }
+
+  async hasStreamError() {
+    return this.streamError !== undefined;
   }
 }

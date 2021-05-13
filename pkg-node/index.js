@@ -566,8 +566,8 @@ module.exports.__wbg_warn_5fc232d538408d4a = function(arg0) {
     console.warn(getObject(arg0));
 };
 
-module.exports.__wbindgen_closure_wrapper211 = function(arg0, arg1, arg2) {
-    var ret = makeMutClosure(arg0, arg1, 49, __wbg_adapter_22);
+module.exports.__wbindgen_closure_wrapper206 = function(arg0, arg1, arg2) {
+    var ret = makeMutClosure(arg0, arg1, 51, __wbg_adapter_22);
     return addHeapObject(ret);
 };
 

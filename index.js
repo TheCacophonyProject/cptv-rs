@@ -81,6 +81,12 @@ export class CptvDecoder {
     return await this.waitForMessage(type);
   }
 
+  async hasStreamError() {
+    const type = "hasStreamError";
+    this.decoder.postMessage({type});
+    return await this.waitForMessage(type);
+  }
+
   async waitForMessage(messageType) {
     return new Promise((resolve) => {
       this.messageQueue[messageType] = resolve;

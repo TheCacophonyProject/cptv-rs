@@ -71,6 +71,12 @@ declare class CptvDecoder {
      * Terminate the decoder worker thread
      */
     close(): void;
+
+    /**
+     * If the decode halted with errors.  Use this in the API to see if we should continue processing a file, or mark it
+     * as damaged.
+     */
+    hasStreamError(): Promise<boolean>
 }
 
 export interface CptvHeader {
@@ -93,10 +99,12 @@ export interface CptvHeader {
     altitude: number | null;
     accuracy: number | null;
     hasBackgroundFrame: boolean;
-    // Duration in seconds, *excluding* any background frame.  For compatibility with current
-    // durations stored in DB which *include* any background frame, the user may wish to add 1/fps seconds.
+    // Duration in seconds, *including* any background frame.  This is for compatibility with current
+    // durations stored in DB which *include* background frames, the user may wish to subtract 1/fps seconds
+    // to get the actual duration.
     // Only set if we used one of the getFileMetadata|getStreamMetadata, and scan the entire file.
     duration?: number;
+    totalFrames?: number;
 }
 
 export interface CptvFrameHeader {

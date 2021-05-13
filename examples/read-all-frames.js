@@ -3,15 +3,24 @@ import {performance} from "perf_hooks";
 
 (async function() {
   const start = performance.now();
-  const file = "../cptv-files/20210429-201847.cptv";
+  const file = "../cptv-files/20200130-031836.cptv";
   const decoder = new CptvDecoder();
-  await decoder.initWithCptvFile(new URL(file, import.meta.url).pathname);
+  const fileName = new URL(file, import.meta.url).pathname;
+  await decoder.initWithCptvFile(fileName);
   const header = await decoder.getHeader();
   const frames = [];
-  while (!(await decoder.getTotalFrames())) {
-    frames.push(await decoder.getNextFrame());
+  let finished = false;
+  while (!finished) {
+    const frame = await decoder.getNextFrame();
+    finished = await decoder.getTotalFrames();
+    if (frame !== null && !finished) {
+      frames.push(frame);
+    }
   }
+  const total = await decoder.getTotalFrames();
+  console.assert(!await decoder.hasStreamError());
   decoder.close();
+  console.assert(total === frames.length);
   const end = performance.now();
   console.log(`Time elapsed: ${end - start}ms`);
   console.log("# Frames: ", frames.length);

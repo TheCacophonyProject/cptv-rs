@@ -3,7 +3,7 @@ import {performance} from "perf_hooks";
 
 (async function() {
   const start = performance.now();
-  const file = "../cptv-files/20210429-201847.cptv";
+  const file = "../cptv-files/20200130-031836.cptv";
   const decoder = new CptvDecoder();
   const metadata = await decoder.getFileMetadata(new URL(file, import.meta.url).pathname);
   decoder.close();
@@ -11,4 +11,5 @@ import {performance} from "perf_hooks";
   console.log(`Time elapsed: ${end - start}ms`);
   console.log("Metadata", metadata);
   console.log("Duration (seconds)", metadata.duration);
+  console.log("Total frames (seconds)", metadata.totalFrames);
 })();

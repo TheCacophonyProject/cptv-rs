@@ -98,6 +98,7 @@ pub struct CptvPlayerContext {
     /// Current clip metadata
     header_info: CptvHeader, // TODO(jon): Are we okay with doing our dynamic dispatch off of this enum?
 
+    last_time_on: usize,
     frame_buffer: Option<CptvFrame>,
     frame_count: usize,
     reader: Option<ReadableStreamDefaultReader>,
@@ -133,6 +134,7 @@ impl CptvPlayerContext {
             header_info: CptvHeader::UNINITIALISED,
             frame_buffer: None,
             frame_count: 0,
+            last_time_on: 0,
             reader: Some(stream),
             gz_buffer: vec![0; 160 * 120 * 2],
         };
@@ -196,9 +198,20 @@ impl CptvPlayerContext {
 
     fn pump_gz(&mut self) -> io::Result<usize> {
         let read_bytes = self.gz_decoder.as_mut().unwrap().read(&mut self.gz_buffer);
-        if let Ok(read_bytes) = read_bytes {
-            for i in 0..read_bytes {
-                self.downloaded_data.gz_decoded.push_back(self.gz_buffer[i]);
+        match &read_bytes {
+            Ok(read_bytes) => {
+                for i in 0..*read_bytes {
+                    self.downloaded_data.gz_decoded.push_back(self.gz_buffer[i]);
+                }
+            }
+            Err(e) => {
+                match e.kind() {
+                    ErrorKind::WouldBlock => {}
+                    _ => {
+                        warn!("Gzip stream error {:?}", e);
+                        self.downloaded_data.parse_error = true;
+                    }
+                }
             }
         }
         read_bytes
@@ -241,8 +254,17 @@ impl CptvPlayerContext {
     pub async fn fetch_next_frame(
         mut context: CptvPlayerContext,
     ) -> Result<CptvPlayerContext, JsValue> {
+        let prev_frame_time = context.last_time_on;
         context = CptvPlayerContext::parse_next_frame(context, true).await?;
-        Ok(context)
+        if context.last_time_on == prev_frame_time && prev_frame_time != 0 && !context.reader().stream_ended {
+            // We didn't get the frame, so poll again.
+            context = CptvPlayerContext::parse_next_frame(context, true).await?;
+        }
+        if context.downloaded_data.parse_error {
+            Err(JsValue::from_str("Invalid or corrupted gzip stream"))
+        } else {
+            Ok(context)
+        }
     }
 
     async fn parse_next_frame(
@@ -265,16 +287,18 @@ impl CptvPlayerContext {
                         let (ctx, _should_continue, bytes_read) =
                             CptvPlayerContext::fetch_bytes(context).await?;
                         context = ctx;
-                        if bytes_read == 0 {
+                        if bytes_read == 0 || context.downloaded_data.parse_error {
                             break;
                         }
                         continue;
                     }
                     match decode_frame_header_v2(frame_data, width, height) {
                         Ok((remaining, (frame_data, mut frame))) => {
+                            context.last_time_on = frame.time_on as usize;
                             if unpack_frame {
                                 unpack_frame_v2(&context.frame_buffer, frame_data, &mut frame);
                                 // Store the decoded frame
+                                info!("Unpacked frame {:?}", context.frame_count);
                                 context.frame_buffer = Some(frame);
                             }
 
@@ -285,6 +309,7 @@ impl CptvPlayerContext {
                             }
                             // Increment the frame count
                             context.frame_count += 1;
+                            info!("increment frame {:?}", context.frame_count);
                             break;
                         }
                         Err(e) => {
@@ -337,6 +362,9 @@ impl CptvPlayerContext {
                     }
                 }
             }
+            if context.downloaded_data.parse_error {
+                break;
+            }
         }
         Ok(context)
     }
@@ -352,10 +380,7 @@ impl CptvPlayerContext {
     pub fn get_total_frames(&self) -> JsValue {
         match self.total_frames() {
             Some(total_frames) => match &self.header_info {
-                CptvHeader::V2(_) => match self.has_background_frame() {
-                    true => JsValue::from_f64(isize::max(0, total_frames as isize - 1) as f64),
-                    false => JsValue::from_f64(total_frames as f64),
-                },
+                CptvHeader::V2(_) => JsValue::from_f64(total_frames as f64),
                 CptvHeader::V3(header) => JsValue::from_f64(header.num_frames as f64),
                 _ => JsValue::null(),
             },
@@ -438,12 +463,14 @@ impl CptvPlayerContext {
                 r
             }
             Err(e) => {
-                // TODO(jon): Test with corrupt gzip stream.
-                if e.kind() == ErrorKind::UnexpectedEof {
-                    // TODO(jon): OUr reader should return would block errors, so that we only get
-                    // unexpected EOF once at end of stream.
-                    info!("Gzip ended");
-                    context.downloaded_data.gz_ended = true;
+                match e.kind() {
+                    ErrorKind::UnexpectedEof => {
+                        context.downloaded_data.gz_ended = true;
+                    }
+                    ErrorKind::WouldBlock => {}
+                    _ => {
+                        warn!("Gzip error {:?}", e);
+                    }
                 }
                 if !context.reader().stream_ended {
                     // TODO(jon): Could get bytes a bit more greedily here to be able to read
@@ -467,6 +494,9 @@ impl CptvPlayerContext {
             loop {
                 let (ctx, should_continue, _) = CptvPlayerContext::fetch_bytes(context).await?;
                 context = ctx;
+                if context.downloaded_data.parse_error {
+                    break;
+                }
                 if should_continue {
                     continue;
                 }

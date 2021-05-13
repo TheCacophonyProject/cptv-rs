@@ -54,6 +54,11 @@ if (context) {
         const header = await player.getHeader();
         context.postMessage({type: data.type, data: header});
       }
+        break
+      case "hasStreamError": {
+        const hasError = await player.hasStreamError();
+        context.postMessage({type: data.type, data: hasError });
+      }
         break;
       default:
         context.postMessage(data);
