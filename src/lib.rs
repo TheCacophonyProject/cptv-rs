@@ -164,12 +164,14 @@ impl CptvPlayerContext {
     ) -> Result<bool, JsValue> {
         let result = wasm_bindgen_futures::JsFuture::from(self.read_from_stream()).await?;
         let sink = target.unwrap_or_else(|| self.reader_mut());
-        sink.stream_ended = Reflect::get(&result, &JsValue::from_str("done"))
+        sink.stream_ended = unsafe {
+            Reflect::get(&result, &JsValue::from_str("done"))
             .expect("Should have property 'done'")
             .as_bool()
-            .unwrap();
+            .unwrap()
+        };
 
-        if let Ok(value) = Reflect::get(&result, &JsValue::from_str("value")) {
+        if let Ok(value) = unsafe { Reflect::get(&result, &JsValue::from_str("value")) } {
             if !value.is_undefined() {
                 let arr = value.dyn_into::<Uint8Array>().unwrap();
                 sink.append(&arr);
