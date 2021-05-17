@@ -57,6 +57,12 @@ export class CptvDecoder {
     return await this.waitForMessage(type);
   }
 
+  async getBytesMetadata(arrayBuffer) {
+    const type = "getBytesMetadata";
+    this.decoder.postMessage({ type, arrayBuffer });
+    return await this.waitForMessage(type);
+  }
+
   async getNextFrame() {
     const type = "getNextFrame";
     this.decoder.postMessage({ type });

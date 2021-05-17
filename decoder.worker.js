@@ -25,6 +25,11 @@ if (context) {
         context.postMessage({type: data.type, data: result});
       }
         break;
+      case "getBytesMetadata": {
+        const header = await player.getBytesMetadata(data.arrayBuffer);
+        context.postMessage({type: data.type, data: header});
+      }
+        break;
       case "getFileMetadata": {
         const header = await player.getFileMetadata(data.path);
         context.postMessage({type: data.type, data: header});

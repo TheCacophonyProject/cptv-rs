@@ -32,6 +32,13 @@ declare class CptvDecoder {
     initWithLocalCptvFile(fileBytes: Uint8Array): Promise<string | boolean>;
 
     /**
+     * Get the header and duration in seconds for an already loaded byte array
+     * This function reads and consumes the entire file, without decoding actual frames.
+     * @param fileBytes (Uint8Array)
+     */
+    getBytesMetadata(fileBytes: Uint8Array): Promise<CptvHeader>;
+
+    /**
      * Get the header and duration in seconds of a local CPTV file given by filePath.
      * This function reads and consumes the entire file, without decoding actual frames.
      * @param filePath (String)

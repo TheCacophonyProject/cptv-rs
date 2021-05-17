@@ -117,7 +117,7 @@ export class CptvDecoderInterface {
     return this.initWithFileBytes(file, filePath);
   }
 
-  async initWithFileBytes(fileBytes, filePath = "", wasm) {
+  async initWithFileBytes(fileBytes, filePath = "") {
     // Don't call this from a browser!
     const unlocker = new Unlocker();
     await this.lockIsUncontended(unlocker);
@@ -216,6 +216,11 @@ export class CptvDecoderInterface {
       duration,
       totalFrames: totalFrameCount,
     }
+  }
+
+  async getBytesMetadata(fileBytes) {
+    await this.initWithFileBytes(fileBytes);
+    return await this.getMetadata();
   }
 
   async getFileMetadata(filePath) {
