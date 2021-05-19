@@ -164,14 +164,12 @@ impl CptvPlayerContext {
     ) -> Result<bool, JsValue> {
         let result = wasm_bindgen_futures::JsFuture::from(self.read_from_stream()).await?;
         let sink = target.unwrap_or_else(|| self.reader_mut());
-        sink.stream_ended = unsafe {
-            Reflect::get(&result, &JsValue::from_str("done"))
+        sink.stream_ended = Reflect::get(&result, &JsValue::from_str("done"))
             .expect("Should have property 'done'")
             .as_bool()
-            .unwrap()
-        };
+            .unwrap();
 
-        if let Ok(value) = unsafe { Reflect::get(&result, &JsValue::from_str("value")) } {
+        if let Ok(value) = Reflect::get(&result, &JsValue::from_str("value")) {
             if !value.is_undefined() {
                 let arr = value.dyn_into::<Uint8Array>().unwrap();
                 sink.append(&arr);
@@ -206,15 +204,13 @@ impl CptvPlayerContext {
                     self.downloaded_data.gz_decoded.push_back(self.gz_buffer[i]);
                 }
             }
-            Err(e) => {
-                match e.kind() {
-                    ErrorKind::WouldBlock => {}
-                    _ => {
-                        warn!("Gzip stream error {:?}", e);
-                        self.downloaded_data.parse_error = true;
-                    }
+            Err(e) => match e.kind() {
+                ErrorKind::WouldBlock => {}
+                _ => {
+                    warn!("Gzip stream error {:?}", e);
+                    self.downloaded_data.parse_error = true;
                 }
-            }
+            },
         }
         read_bytes
     }
@@ -249,7 +245,11 @@ impl CptvPlayerContext {
             context.reader_mut().inner.capacity(),
             context.downloaded_data.gz_decoded.capacity()
         );
-        Ok(context)
+        if context.downloaded_data.parse_error {
+            Err(JsValue::from_str("Invalid or corrupted CPTV stream"))
+        } else {
+            Ok(context)
+        }
     }
 
     #[wasm_bindgen(js_name = fetchNextFrame)]
@@ -258,7 +258,10 @@ impl CptvPlayerContext {
     ) -> Result<CptvPlayerContext, JsValue> {
         let prev_frame_time = context.last_time_on;
         context = CptvPlayerContext::parse_next_frame(context, true).await?;
-        if context.last_time_on == prev_frame_time && prev_frame_time != 0 && !context.reader().stream_ended {
+        if context.last_time_on == prev_frame_time
+            && prev_frame_time != 0
+            && !context.reader().stream_ended
+        {
             // We didn't get the frame, so poll again.
             context = CptvPlayerContext::parse_next_frame(context, true).await?;
         }

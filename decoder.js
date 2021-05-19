@@ -196,7 +196,11 @@ export class CptvDecoderInterface {
     await this.lockIsUncontended(unlocker);
     this.locked = true;
     if (this.playerContext && this.playerContext.ptr) {
-      this.playerContext = await CptvPlayerContext.countTotalFrames(this.playerContext);
+      try {
+        this.playerContext = await CptvPlayerContext.countTotalFrames(this.playerContext);
+      } catch (e) {
+        this.streamError = e;
+      }
       // We can't call any other methods that read frame data on this stream,
       // since we've exhausted it and thrown away the data after scanning for the info we want.
       this.consumed = true;
@@ -208,6 +212,10 @@ export class CptvDecoderInterface {
 
   async getMetadata() {
     const header = await this.getHeader();
+    if (typeof header === "string") {
+      // Parse error
+      return header;
+    }
     const totalFrameCount = await this.countTotalFrames();
     const duration = (1 / header.fps) * totalFrameCount;
     return {
@@ -253,6 +261,9 @@ export class CptvDecoderInterface {
       this.playerContext = await CptvPlayerContext.fetchHeader(this.playerContext);
     }
     const header = this.playerContext.getHeader();
+    if (header === "Unable to parse header") {
+      this.streamError = header;
+    }
     unlocker.unlock();
     this.locked = false;
     return header;
