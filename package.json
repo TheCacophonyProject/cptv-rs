@@ -3,7 +3,7 @@
   "collaborators": [
     "jon hardie <jon@cacophony.org.nz>"
   ],
-  "version": "1.1.8",
+  "version": "1.1.9",
   "scripts": {
     "build-webpack": "wasm-pack build --out-name index",
     "build-node": "wasm-pack build --target nodejs --out-name index --out-dir pkg-node",

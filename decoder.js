@@ -6,14 +6,12 @@ let CptvPlayerContext;
  *
  * resolve: {
  *  fallback: {
- *    fs,
- *    module,
+ *    fs
  *  }
  * }
  */
 
 import fs from "fs/promises";
-import { createRequire } from "module";
 
 class Unlocker {
   constructor() {
@@ -68,18 +66,27 @@ const FakeReader = function (bytes, maxChunkSize) {
 let initedWasm = false;
 
 export class CptvDecoderInterface {
+  async initWasm(isNode) {
+    if (!initedWasm) {
+      if (isNode) {
+        CptvPlayerContext = (await import("./pkg-node/index.js")).CptvPlayerContext;
+      } else {
+        CptvPlayerContext = (await import ("./pkg/index.js")).CptvPlayerContext;
+      }
+      initedWasm = true;
+    }
+    else if (initedWasm && this.inited) {
+      this.playerContext.free();
+      this.reader && await this.reader.cancel();
+    }
+  }
+
   async initWithCptvUrlAndSize(url, size) {
     const unlocker = new Unlocker();
     await this.lockIsUncontended(unlocker);
     this.locked = true;
     this.prevFrameHeader = null;
-    if (!initedWasm) {
-      CptvPlayerContext = (await import ("./pkg/index.js")).CptvPlayerContext;
-      initedWasm = true;
-    } else if (initedWasm && this.inited) {
-      this.playerContext.free();
-      this.reader && await this.reader.cancel();
-    }
+    await this.initWasm(false);
     try {
       // Use this expired JWT token to test that failure case (usually when a page has been open too long)
       // const oldJWT = "https://api.cacophony.org.nz/api/v1/signedUrl?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJfdHlwZSI6ImZpbGVEb3dubG9hZCIsImtleSI6InJhdy8yMDIxLzA0LzE1LzQ3MGU2YjY1LWZkOTgtNDk4Ny1iNWQ3LWQyN2MwOWIxODFhYSIsImZpbGVuYW1lIjoiMjAyMTA0MTUtMTE0MjE2LmNwdHYiLCJtaW1lVHlwZSI6ImFwcGxpY2F0aW9uL3gtY3B0diIsImlhdCI6MTYxODQ2MjUwNiwiZXhwIjoxNjE4NDYzMTA2fQ.p3RAOX7Ns52JqHWTMM5Se-Fn-UCyRtX2tveaGrRmiwo";
@@ -97,6 +104,7 @@ export class CptvDecoderInterface {
         this.locked = false;
         return true;
       } else {
+        unlocker.unlock();
         this.locked = false;
         try {
           const r = await this.response.json();
@@ -114,26 +122,16 @@ export class CptvDecoderInterface {
   async initWithCptvFile(filePath) {
     // Don't call this from a browser!
     const file = await fs.readFile(filePath);
-    return this.initWithFileBytes(file, filePath);
+    return this.initWithFileBytes(file, filePath, true);
   }
 
-  async initWithFileBytes(fileBytes, filePath = "") {
+  async initWithFileBytes(fileBytes, filePath = "", isNode = false) {
     // Don't call this from a browser!
     const unlocker = new Unlocker();
     await this.lockIsUncontended(unlocker);
     this.prevFrameHeader = null;
     this.locked = true;
-    if (!initedWasm) {
-      if (createRequire) {
-        CptvPlayerContext = (await import("./pkg-node/index.js")).CptvPlayerContext;
-      } else {
-        CptvPlayerContext = (await import("./pkg/index.js")).CptvPlayerContext;
-      }
-      initedWasm = true;
-    } else if (initedWasm && this.inited) {
-      this.playerContext.free();
-      this.reader && await this.reader.cancel();
-    }
+    await this.initWasm(isNode);
     this.consumed = false;
     this.reader = new FakeReader(fileBytes, 100000);
     this.expectedSize = fileBytes.length;
@@ -144,6 +142,7 @@ export class CptvDecoderInterface {
       this.locked = false;
       return true;
     } catch (e) {
+      unlocker.unlock();
       this.locked = false;
       return `Failed to load CPTV file ${filePath}, ${e}`;
     }
@@ -224,7 +223,7 @@ export class CptvDecoderInterface {
   }
 
   async getFileMetadata(filePath) {
-    await this.initWithCptvFile(filePath, true);
+    await this.initWithCptvFile(filePath);
     return await this.getMetadata();
   }
 
