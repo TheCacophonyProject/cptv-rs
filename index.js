@@ -5,8 +5,15 @@ export class CptvDecoder {
   constructor() {
     this.messageQueue = {};
     const onMessage = (message) => {
-      const type = message instanceof MessageEvent ? message.data.type : message.type;
-      const data = message instanceof MessageEvent ? message.data.data : message.data;
+      let type;
+      let data;
+      if (message.type) {
+        type = message.type;
+        data = message.data;
+      } else {
+        type = message.data.type;
+        data = message.data.data;
+      }
 
       const resolver = this.messageQueue[type];
       delete this.messageQueue[type];
