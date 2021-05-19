@@ -226,7 +226,7 @@ export class CptvDecoderInterface {
   }
 
   async getBytesMetadata(fileBytes) {
-    await this.initWithFileBytes(fileBytes);
+    await this.initWithFileBytes(fileBytes, "", !!fs);
     return await this.getMetadata();
   }
 
