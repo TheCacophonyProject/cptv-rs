@@ -7,7 +7,7 @@ export class CptvDecoder {
     const onMessage = (message) => {
       let type;
       let data;
-      if (message.type) {
+      if (message.type && message.type !== "message") {
         type = message.type;
         data = message.data;
       } else {
