@@ -23,7 +23,7 @@ class Unlocker {
 }
 
 // For use in nodejs to wrap an already loaded array buffer into a Reader interface
-const FakeReader = function (bytes, maxChunkSize) {
+const FakeReader = function (bytes, maxChunkSize = 0) {
   const state = {
     offsets: []
   };
