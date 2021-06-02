@@ -266,7 +266,7 @@ impl CptvPlayerContext {
             context = CptvPlayerContext::parse_next_frame(context, true).await?;
         }
         if context.downloaded_data.parse_error {
-            Err(JsValue::from_str("Invalid or corrupted gzip stream"))
+            Err(JsValue::from_str("Invalid or corrupted CPTV stream"))
         } else {
             Ok(context)
         }

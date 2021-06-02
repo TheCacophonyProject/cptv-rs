@@ -86,6 +86,7 @@ export class CptvDecoderInterface {
     await this.lockIsUncontended(unlocker);
     this.locked = true;
     this.prevFrameHeader = null;
+    this.streamError = undefined;
     await this.initWasm(false);
     try {
       // Use this expired JWT token to test that failure case (usually when a page has been open too long)
@@ -127,6 +128,7 @@ export class CptvDecoderInterface {
 
   async initWithFileBytes(fileBytes, filePath = "", isNode = false) {
     // Don't call this from a browser!
+    this.streamError = undefined;
     const unlocker = new Unlocker();
     await this.lockIsUncontended(unlocker);
     this.prevFrameHeader = null;
@@ -142,6 +144,7 @@ export class CptvDecoderInterface {
       this.locked = false;
       return true;
     } catch (e) {
+      this.streamError = e;
       unlocker.unlock();
       this.locked = false;
       return `Failed to load CPTV file ${filePath}, ${e}`;
@@ -150,10 +153,12 @@ export class CptvDecoderInterface {
 
   async fetchNextFrame() {
     if (!this.reader) {
-      return "You need to initialise the player with the url of a CPTV file";
+      console.warn("You need to initialise the player with the url of a CPTV file");
+      return null;
     }
     if (this.consumed) {
-      return "Stream has already been consumed and discarded";
+      console.warn("Stream has already been consumed and discarded");
+      return null;
     }
     const unlocker = new Unlocker();
     await this.lockIsUncontended(unlocker);
@@ -163,13 +168,15 @@ export class CptvDecoderInterface {
         this.playerContext = await CptvPlayerContext.fetchNextFrame(this.playerContext);
       } catch (e) {
         this.streamError = e;
-        return null;
       }
     } else {
       console.warn("Fetch next failed");
     }
     unlocker.unlock();
     this.locked = false;
+    if (this.hasStreamError()) {
+      return null;
+    }
     const frameData = this.playerContext.getNextFrame();
     const frameHeader = this.playerContext.getFrameHeader();
 
@@ -212,9 +219,8 @@ export class CptvDecoderInterface {
 
   async getMetadata() {
     const header = await this.getHeader();
-    if (typeof header === "string") {
-      // Parse error
-      return header;
+    if (this.hasStreamError()) {
+      return this.streamError;
     }
     const totalFrameCount = await this.countTotalFrames();
     const duration = (1 / header.fps) * totalFrameCount;
@@ -260,13 +266,16 @@ export class CptvDecoderInterface {
     if (this.playerContext && this.playerContext.ptr) {
       this.playerContext = await CptvPlayerContext.fetchHeader(this.playerContext);
     }
-    const header = this.playerContext.getHeader();
-    if (header === "Unable to parse header") {
-      this.streamError = header;
+    if (this.playerContext && this.playerContext.ptr) {
+      const header = this.playerContext.getHeader();
+      if (header === "Unable to parse header") {
+        this.streamError = header;
+      }
+      unlocker.unlock();
+      this.locked = false;
+      return header;
     }
-    unlocker.unlock();
-    this.locked = false;
-    return header;
+    return this.streamError;
   }
 
   getTotalFrames() {
@@ -287,7 +296,7 @@ export class CptvDecoderInterface {
     return this.playerContext.bytesLoaded() / this.expectedSize;
   }
 
-  async hasStreamError() {
+  hasStreamError() {
     return this.streamError !== undefined;
   }
 }

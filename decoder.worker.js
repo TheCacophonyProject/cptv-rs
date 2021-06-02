@@ -61,8 +61,13 @@ if (context) {
       }
         break
       case "hasStreamError": {
-        const hasError = await player.hasStreamError();
+        const hasError = player.hasStreamError();
         context.postMessage({type: data.type, data: hasError });
+      }
+        break;
+      case "getStreamError": {
+        const error = player.streamError;
+        context.postMessage({type: data.type, data: error });
       }
         break;
       default:

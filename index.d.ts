@@ -84,6 +84,11 @@ declare class CptvDecoder {
      * as damaged.
      */
     hasStreamError(): Promise<boolean>
+
+    /**
+     * Get any stream error message
+     */
+    getStreamError(): Promise<string | null>
 }
 
 export interface CptvHeader {
