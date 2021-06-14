@@ -85,6 +85,7 @@ export class CptvDecoderInterface {
     const unlocker = new Unlocker();
     await this.lockIsUncontended(unlocker);
     this.locked = true;
+    this.framesRead = 0;
     this.prevFrameHeader = null;
     this.streamError = undefined;
     await this.initWasm(false);
@@ -128,6 +129,7 @@ export class CptvDecoderInterface {
 
   async initWithFileBytes(fileBytes, filePath = "", isNode = false) {
     // Don't call this from a browser!
+    this.framesRead = 0;
     this.streamError = undefined;
     const unlocker = new Unlocker();
     await this.lockIsUncontended(unlocker);
@@ -179,9 +181,8 @@ export class CptvDecoderInterface {
     }
     const frameData = this.playerContext.getNextFrame();
     const frameHeader = this.playerContext.getFrameHeader();
-
     // NOTE(jon): Work around a bug where the mlx sensor doesn't report timeOn times, just hardcodes 60000
-    if (frameHeader.imageData.width !== 32) {
+    if (frameHeader && frameHeader.imageData.width !== 32) {
       const sameFrameAsPrev = frameHeader && this.prevFrameHeader && frameHeader.timeOnMs === this.prevFrameHeader.timeOnMs;
       if (sameFrameAsPrev && this.getTotalFrames() === null) {
         this.prevFrameHeader = frameHeader;
@@ -192,12 +193,14 @@ export class CptvDecoderInterface {
     if (frameData.length === 0) {
       return null;
     }
+    this.framesRead++;
     return { data: new Uint16Array(frameData), meta: frameHeader };
   }
 
   async countTotalFrames() {
     if (!this.reader) {
-      return "You need to initialise the player with the url of a CPTV file";
+      console.warn("You need to initialise the player with the url of a CPTV file");
+      return 0;
     }
     const unlocker = new Unlocker();
     await this.lockIsUncontended(unlocker);
@@ -219,15 +222,17 @@ export class CptvDecoderInterface {
 
   async getMetadata() {
     const header = await this.getHeader();
+    let totalFrameCount = 0;
     if (this.hasStreamError()) {
       return this.streamError;
-    }
-    const totalFrameCount = await this.countTotalFrames();
-    const duration = (1 / header.fps) * totalFrameCount;
-    return {
-      ...header,
-      duration,
-      totalFrames: totalFrameCount,
+    } else {
+      totalFrameCount = await this.countTotalFrames();
+      const duration = (1 / header.fps) * totalFrameCount;
+      return {
+        ...header,
+        duration,
+        totalFrames: totalFrameCount,
+      }
     }
   }
 
@@ -280,7 +285,7 @@ export class CptvDecoderInterface {
 
   getTotalFrames() {
     if (this.streamError) {
-      return 1;
+      return this.framesRead;
     }
     if (!this.locked && this.inited && this.playerContext.ptr && this.playerContext.streamComplete()) {
       return this.playerContext.totalFrames();

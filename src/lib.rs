@@ -256,13 +256,13 @@ impl CptvPlayerContext {
     pub async fn fetch_next_frame(
         mut context: CptvPlayerContext,
     ) -> Result<CptvPlayerContext, JsValue> {
-        let prev_frame_time = context.last_time_on;
+        let prev_frame_count = context.frame_count;
         context = CptvPlayerContext::parse_next_frame(context, true).await?;
-        if context.last_time_on == prev_frame_time
-            && prev_frame_time != 0
+        if context.frame_count == prev_frame_count
             && !context.reader().stream_ended
         {
             // We didn't get the frame, so poll again.
+            info!("Frame same, so poll again");
             context = CptvPlayerContext::parse_next_frame(context, true).await?;
         }
         if context.downloaded_data.parse_error {
