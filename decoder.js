@@ -66,9 +66,9 @@ const FakeReader = function (bytes, maxChunkSize = 0) {
 let initedWasm = false;
 
 export class CptvDecoderInterface {
-  async initWasm(isNode) {
+  async initWasm() {
     if (!initedWasm) {
-      if (isNode) {
+      if (!!fs) { // fs exists, so this is node
         CptvPlayerContext = (await import("./pkg-node/index.js")).CptvPlayerContext;
       } else {
         CptvPlayerContext = (await import ("./pkg/index.js")).CptvPlayerContext;
@@ -88,7 +88,7 @@ export class CptvDecoderInterface {
     this.framesRead = 0;
     this.prevFrameHeader = null;
     this.streamError = undefined;
-    await this.initWasm(false);
+    await this.initWasm();
     try {
       // Use this expired JWT token to test that failure case (usually when a page has been open too long)
       // const oldJWT = "https://api.cacophony.org.nz/api/v1/signedUrl?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJfdHlwZSI6ImZpbGVEb3dubG9hZCIsImtleSI6InJhdy8yMDIxLzA0LzE1LzQ3MGU2YjY1LWZkOTgtNDk4Ny1iNWQ3LWQyN2MwOWIxODFhYSIsImZpbGVuYW1lIjoiMjAyMTA0MTUtMTE0MjE2LmNwdHYiLCJtaW1lVHlwZSI6ImFwcGxpY2F0aW9uL3gtY3B0diIsImlhdCI6MTYxODQ2MjUwNiwiZXhwIjoxNjE4NDYzMTA2fQ.p3RAOX7Ns52JqHWTMM5Se-Fn-UCyRtX2tveaGrRmiwo";
@@ -127,7 +127,7 @@ export class CptvDecoderInterface {
     return this.initWithFileBytes(file, filePath, true);
   }
 
-  async initWithFileBytes(fileBytes, filePath = "", isNode = false) {
+  async initWithFileBytes(fileBytes, filePath = "") {
     // Don't call this from a browser!
     this.framesRead = 0;
     this.streamError = undefined;
@@ -135,7 +135,7 @@ export class CptvDecoderInterface {
     await this.lockIsUncontended(unlocker);
     this.prevFrameHeader = null;
     this.locked = true;
-    await this.initWasm(isNode);
+    await this.initWasm();
     this.consumed = false;
     this.reader = new FakeReader(fileBytes, 100000);
     this.expectedSize = fileBytes.length;
