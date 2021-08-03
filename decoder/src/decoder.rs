@@ -11,14 +11,6 @@ use crate::v3::decode_cptv3_header;
 use cptv_shared::v2::types::{Cptv3Header, Cptv2Header};
 use cptv_shared::v2::decode_cptv2_header;
 
-pub enum CptvHeader {
-    UNINITIALISED,
-
-    #[allow(unused)]
-    V3(Cptv3Header),
-    V2(Cptv2Header),
-}
-
 pub fn decode_cptv_header(i: &[u8]) -> nom::IResult<&[u8], CptvHeader> {
     let (i, val) = take(4usize)(i)?;
     let (_, _) = tag(b"CPTV")(val)?;

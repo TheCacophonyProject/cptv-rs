@@ -6,6 +6,16 @@ use std::fmt::{Debug, Formatter};
 use std::ops::{Index, IndexMut};
 use std::time::Duration;
 
+
+pub enum CptvHeader {
+    UNINITIALISED,
+
+    #[allow(unused)]
+    V3(Cptv3Header),
+    V2(Cptv2Header),
+}
+
+
 #[derive(Serialize)]
 pub struct Cptv2Header {
     pub timestamp: u64,

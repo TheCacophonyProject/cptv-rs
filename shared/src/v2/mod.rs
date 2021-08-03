@@ -1,12 +1,10 @@
-use crate::decoder::CptvHeader;
-
 pub mod types;
 #[allow(unused)]
 use log::{info, trace, warn};
 use nom::bytes::streaming::take;
 use nom::character::streaming::char;
 use nom::number::streaming::{le_f32, le_u32, le_u64, le_u8};
-use types::{Cptv2Header, CptvFrame, FieldType};
+use types::{CptvHeader, Cptv2Header, CptvFrame, FieldType};
 
 // TODO(jon): Move most of this to cptv_common.  cptv_common might end up having
 // streaming and non-streaming versions, but I don't think we care too much at the moment.

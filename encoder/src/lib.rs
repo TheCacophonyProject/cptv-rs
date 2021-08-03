@@ -17,6 +17,7 @@ fn push_field<T: Sized>(output: &mut Vec<u8>, value: &T, code: FieldType) -> usi
 // TODO(jon): Move these into cargo workspaces.
 
 const X: u16 = 0u16;
+
 const O: u16 = 1u16;
 const TEST_FRAME: [u16; 300] = [
     O, O, O, O, O, O, O, O, O, O, O, O, O, O, O, O, O, O, O, O,
