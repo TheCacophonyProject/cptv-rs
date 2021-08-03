@@ -1,6 +1,6 @@
 use crate::decoder::CptvHeader;
 
-pub(crate) mod types;
+pub mod types;
 #[allow(unused)]
 use log::{info, trace, warn};
 use nom::bytes::streaming::take;

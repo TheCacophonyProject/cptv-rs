@@ -8,6 +8,8 @@ use crate::v2::decode_cptv2_header;
 
 #[cfg(feature = "cptv3-support")]
 use crate::v3::decode_cptv3_header;
+use cptv_shared::v2::types::{Cptv3Header, Cptv2Header};
+use cptv_shared::v2::decode_cptv2_header;
 
 pub enum CptvHeader {
     UNINITIALISED,

@@ -1,6 +1,5 @@
 use crate::decoder::{decode_cptv_header, CptvHeader};
 
-pub(crate) mod v2;
 use crate::v2::types::CptvFrame;
 use js_sys::{Reflect, Uint16Array, Uint8Array};
 use log::Level;
@@ -14,6 +13,8 @@ use libflate::non_blocking::gzip::Decoder;
 use std::collections::VecDeque;
 use std::io;
 use wasm_bindgen::JsCast;
+use cptv_shared::v2::{decode_frame_header_v2, unpack_frame_v2};
+use cptv_shared::v2::types::CptvFrame;
 
 mod decoder;
 
@@ -258,9 +259,7 @@ impl CptvPlayerContext {
     ) -> Result<CptvPlayerContext, JsValue> {
         let prev_frame_count = context.frame_count;
         context = CptvPlayerContext::parse_next_frame(context, true).await?;
-        if context.frame_count == prev_frame_count
-            && !context.reader().stream_ended
-        {
+        if context.frame_count == prev_frame_count && !context.reader().stream_ended {
             // We didn't get the frame, so poll again.
             info!("Frame same, so poll again");
             context = CptvPlayerContext::parse_next_frame(context, true).await?;
