@@ -76,18 +76,18 @@ fn pack_frame(frame_bytes: &mut Vec<u8>, frame: &CptvFrame) {
     push_field(frame_bytes, &4u8, FieldType::FrameHeader);
     push_field(
         frame_bytes,
-        &(frame.width() * frame.height() * pixel_bytes as u32),
+        &((frame.image_data.width() * frame.image_data.height()) as u32 * pixel_bytes as u32),
         FieldType::FrameSize,
     );
     // NOTE(jon): Frame size is technically redundant, as it will always be width * height * pixel_bytes
     push_field(frame_bytes, &pixel_bytes, FieldType::PixelBytes);
-    push_field(frame_bytes, &meta.time_on, FieldType::TimeOn);
-    push_field(frame_bytes, &meta.last_ffc_time, FieldType::LastFfcTime);
+    push_field(frame_bytes, &frame.time_on, FieldType::TimeOn);
+    push_field(frame_bytes, &frame.last_ffc_time, FieldType::LastFfcTime);
     if pixel_bytes == 1 {
         // Seems fair to say that most frames fit comfortably inside 8 bits.
-        for y in 0..frame.height() {
-            for x in 0..frame.width() {
-                let val = frame[y][x] as i8 as u8;
+        for y in 0..frame.image_data.height() {
+            for x in 0..frame.image_data.width() {
+                let val = frame.image_data[y][x] as i8 as u8;
                 frame_bytes.push(val);
             }
         }
@@ -139,46 +139,36 @@ pub fn create_test_cptv_file(params: JsValue) -> Uint8Array {
     let mut output: Vec<u8> = Vec::new();
     output.extend_from_slice(&b"CPTV"[..]);
     output.push(2);
-    let mut num_fields = 0;
-    let num_fields_offset = push_field(&mut output, &num_fields, FieldType::Header);
+
     push_field(&mut output, &meta.timestamp, FieldType::Timestamp);
     push_field(&mut output, &meta.width, FieldType::Width);
     push_field(&mut output, &meta.height, FieldType::Height);
     push_field(&mut output, &meta.compression, FieldType::Compression);
     push_field(&mut output, &meta.fps, FieldType::FrameRate);
-    let num_frames = cptv.frames.len() as u32;
+    let num_frames = 1u32; // TODO(jon): Update this if more frames are packed in
     push_field(&mut output, &num_frames, FieldType::NumFrames);
+    push_string(&mut output, &meta.device_name, FieldType::DeviceName);
 
-    push_string(&mut output, &cptv.meta.device_name, FieldType::DeviceName);
-    num_fields += 10;
-
-    if let Some(motion_config) = &cptv.meta.motion_config {
+    if let Some(motion_config) = &meta.motion_config {
         push_string(&mut output, motion_config, FieldType::MotionConfig);
-        num_fields += 1;
     }
-    if let Some(preview_secs) = &cptv.meta.preview_secs {
+    if let Some(preview_secs) = &meta.preview_secs {
         push_field(&mut output, preview_secs, FieldType::PreviewSecs);
-        num_fields += 1;
     }
-    if let Some(latitude) = &cptv.meta.latitude {
+    if let Some(latitude) = &meta.latitude {
         push_field(&mut output, latitude, FieldType::Latitude);
-        num_fields += 1;
     }
-    if let Some(longitude) = &cptv.meta.longitude {
+    if let Some(longitude) = &meta.longitude {
         push_field(&mut output, longitude, FieldType::Longitude);
-        num_fields += 1;
     }
-    if let Some(loc_timestamp) = &cptv.meta.loc_timestamp {
+    if let Some(loc_timestamp) = &meta.loc_timestamp {
         push_field(&mut output, loc_timestamp, FieldType::LocTimestamp);
-        num_fields += 1;
     }
-    if let Some(altitude) = &cptv.meta.altitude {
+    if let Some(altitude) = &meta.altitude {
         push_field(&mut output, altitude, FieldType::Altitude);
-        num_fields += 1;
     }
-    if let Some(accuracy) = &cptv.meta.accuracy {
+    if let Some(accuracy) = &meta.accuracy {
         push_field(&mut output, accuracy, FieldType::Accuracy);
-        num_fields += 1;
     }
     let mut frames = Vec::new();
     pack_frame(&mut frames, &CptvFrame::new_with_dimensions(width, height));
