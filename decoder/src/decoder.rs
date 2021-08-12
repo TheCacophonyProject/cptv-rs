@@ -1,15 +1,15 @@
-use crate::v2::types::{Cptv2Header, Cptv3Header};
 use nom::bytes::streaming::{tag, take};
 use nom::error::{ErrorKind, ParseError};
 use nom::number::streaming::le_u8;
 
 #[cfg(feature = "cptv2-support")]
-use crate::v2::decode_cptv2_header;
+use cptv_shared::v2::decode_cptv2_header;
 
 #[cfg(feature = "cptv3-support")]
-use crate::v3::decode_cptv3_header;
-use cptv_shared::v2::types::{Cptv3Header, Cptv2Header};
-use cptv_shared::v2::decode_cptv2_header;
+use cptv_shared::v3::decode_cptv3_header;
+
+
+use cptv_shared::CptvHeader;
 
 pub fn decode_cptv_header(i: &[u8]) -> nom::IResult<&[u8], CptvHeader> {
     let (i, val) = take(4usize)(i)?;

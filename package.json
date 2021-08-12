@@ -5,8 +5,9 @@
   ],
   "version": "1.2.0",
   "scripts": {
-    "build-webpack": "wasm-pack build --out-name index",
-    "build-node": "wasm-pack build --target nodejs --out-name index --out-dir pkg-node",
+    "build-webpack": "wasm-pack build decoder/ --out-name index --out-dir ../pkg",
+    "build-encoder": "wasm-pack build encoder/ --target nodejs --out-name encoder",
+    "build-node": "wasm-pack build decoder/ --target nodejs --out-name index --out-dir ../pkg-node",
     "node-example-read-all-frames": "node --no-warnings=ExperimentalWarnings --experimental-json-modules examples/read-all-frames.js",
     "node-example-read-metadata-and-duration": "node --no-warnings=ExperimentalWarnings --experimental-json-modules examples/get-file-metadata.js"
   },

@@ -6,16 +6,6 @@ use std::fmt::{Debug, Formatter};
 use std::ops::{Index, IndexMut};
 use std::time::Duration;
 
-
-pub enum CptvHeader {
-    UNINITIALISED,
-
-    #[allow(unused)]
-    V3(Cptv3Header),
-    V2(Cptv2Header),
-}
-
-
 #[derive(Serialize)]
 pub struct Cptv2Header {
     pub timestamp: u64,
@@ -55,11 +45,11 @@ impl Cptv2Header {
         // v2.
         Cptv2Header {
             timestamp: 0,
-            width: 160,
-            height: 120,
+            width: 0,
+            height: 0,
             compression: 0,
             device_name: "".to_string(),
-            fps: 9,
+            fps: 0,
             brand: None,
             model: None,
             device_id: None,
@@ -73,31 +63,6 @@ impl Cptv2Header {
             altitude: None,
             accuracy: None,
             has_background_frame: false,
-        }
-    }
-}
-
-// Cptv3 header includes the v2 header + additional fields to allow seeking.
-// Possible future work to incorporate this into our player.
-pub struct Cptv3Header {
-    pub v2: Cptv2Header,
-    pub min_value: u16,
-    pub max_value: u16,
-    pub toc: Vec<u32>,
-    pub num_frames: u32,
-    pub frames_per_iframe: u8,
-}
-
-impl Cptv3Header {
-    #[allow(unused)]
-    pub fn new() -> Cptv3Header {
-        Cptv3Header {
-            v2: Cptv2Header::new(),
-            min_value: 0,
-            max_value: 0,
-            toc: Vec::new(),
-            num_frames: 0,
-            frames_per_iframe: 0,
         }
     }
 }
@@ -123,6 +88,21 @@ impl FrameData {
         }
     }
 
+    pub fn with_dimensions_and_data(width: usize, height: usize, data: &[u16]) -> FrameData {
+        let frame_range = data.iter().fold(u16::MAX..u16::MIN, |mut acc, &x| {
+            acc.start = u16::min(acc.start, x);
+            acc.end = u16::max(acc.end, x);
+            acc
+        });
+        FrameData {
+            data: Vec::from(data),
+            width,
+            height,
+            min: frame_range.start,
+            max: frame_range.end,
+        }
+    }
+
     pub fn width(&self) -> usize {
         self.width
     }
@@ -142,6 +122,15 @@ impl FrameData {
         self[y][x] = val;
     }
 
+    pub fn as_slice(&self) -> &[u8] {
+        unsafe {
+            std::slice::from_raw_parts(
+                &self.data[0] as *const u16 as *const u8,
+                std::mem::size_of::<u16>() * self.data.len(),
+            )
+        }
+    }
+
     // This was a function made for fixing up our "black pixel" syncing offset issues
     #[allow(unused)]
     pub fn offset(&self, offset: usize) -> FrameData {
@@ -154,6 +143,47 @@ impl FrameData {
             }
         }
         frame
+    }
+
+    pub fn snaking_iter(&self) -> SnakingIterator {
+        SnakingIterator::new(&self)
+    }
+}
+
+pub struct SnakingIterator<'iter> {
+    data: &'iter FrameData,
+    stride: usize,
+    offset: usize
+}
+
+impl SnakingIterator<'_> {
+    pub fn new(frame: &FrameData) -> SnakingIterator {
+        SnakingIterator {
+            data: frame,
+            stride: frame.width,
+            offset: 0
+        }
+    }
+}
+
+impl Iterator for SnakingIterator<'_> {
+    type Item = u16;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let y = self.offset / self.stride;
+        let is_odd = y % 2 == 1;
+        let x = self.offset % self.stride;
+        if y * self.stride + x < self.data.data.len() {
+            let output = if is_odd {
+                self.data[y][self.stride - (x + 1)]
+            } else {
+                self.data[y][x]
+            };
+            self.offset += 1;
+            Some(output)
+        } else {
+            None
+        }
     }
 }
 
@@ -290,7 +320,7 @@ pub enum FieldType {
     FramesPerIframe = b'G',
     FrameHeader = b'F',
 
-    PixelBytes = b'w',
+    BitsPerPixel = b'w',
     FrameSize = b'f',
     LastFfcTime = b'c',
     FrameTempC = b'a',
@@ -329,7 +359,7 @@ impl From<char> for FieldType {
             'G' => FramesPerIframe,
             'F' => FrameHeader,
             'g' => BackgroundFrame,
-            'w' => PixelBytes,
+            'w' => BitsPerPixel,
             'f' => FrameSize,
             'c' => LastFfcTime,
             't' => TimeOn,

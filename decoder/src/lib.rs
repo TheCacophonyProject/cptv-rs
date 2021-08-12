@@ -1,6 +1,3 @@
-use crate::decoder::{decode_cptv_header, CptvHeader};
-
-use crate::v2::types::CptvFrame;
 use js_sys::{Reflect, Uint16Array, Uint8Array};
 use log::Level;
 #[allow(unused)]
@@ -8,13 +5,14 @@ use log::{info, trace, warn};
 use std::io::{ErrorKind, Read};
 use wasm_bindgen::prelude::*;
 
-use crate::v2::{decode_frame_header_v2, unpack_frame_v2};
 use libflate::non_blocking::gzip::Decoder;
 use std::collections::VecDeque;
 use std::io;
 use wasm_bindgen::JsCast;
 use cptv_shared::v2::{decode_frame_header_v2, unpack_frame_v2};
 use cptv_shared::v2::types::CptvFrame;
+use cptv_shared::CptvHeader;
+use crate::decoder::decode_cptv_header;
 
 mod decoder;
 
@@ -73,7 +71,9 @@ impl Read for ResumableReader {
             for i in 0..buf.len() {
                 match self.inner.pop_front() {
                     Some(byte) => buf[i] = byte,
-                    None => return Ok(i),
+                    None => {
+                        return Ok(i)
+                    },
                 }
             }
             Ok(buf.len())
@@ -139,10 +139,10 @@ impl CptvPlayerContext {
             reader: Some(stream),
             gz_buffer: vec![0; 160 * 120 * 2],
         };
-
         let mut reader = ResumableReader::new();
         // Do the initial read from the stream
         let mut stream_ended = false;
+
         while reader.len() < 2 && !stream_ended {
             // Make sure we get at least two bytes, or fail if the stream is shorter
             stream_ended = context.get_bytes_from_stream(Some(&mut reader)).await?;
@@ -205,14 +205,17 @@ impl CptvPlayerContext {
                     self.downloaded_data.gz_decoded.push_back(self.gz_buffer[i]);
                 }
             }
-            Err(e) => match e.kind() {
+            Err(e) => {
+                match e.kind() {
                 ErrorKind::WouldBlock => {}
                 _ => {
                     warn!("Gzip stream error {:?}", e);
                     self.downloaded_data.parse_error = true;
                 }
+            }
             },
         }
+
         read_bytes
     }
 
@@ -241,10 +244,12 @@ impl CptvPlayerContext {
             // Load until we have the frame.
             context = CptvPlayerContext::parse_next_frame(context, false).await?;
         }
+
         info!(
-            "Mem usage :: Reader {}, Decoded {}",
+            "Mem usage :: Reader {}, Decoded {}, frames {}",
             context.reader_mut().inner.capacity(),
-            context.downloaded_data.gz_decoded.capacity()
+            context.downloaded_data.gz_decoded.capacity(),
+            context.frame_count
         );
         if context.downloaded_data.parse_error {
             Err(JsValue::from_str("Invalid or corrupted CPTV stream"))
@@ -299,12 +304,13 @@ impl CptvPlayerContext {
                     match decode_frame_header_v2(frame_data, width, height) {
                         Ok((remaining, (frame_data, mut frame))) => {
                             context.last_time_on = frame.time_on as usize;
+                            // Make sure there are enough bytes to decode another frame. width * height * (frame.bit_width / 8
                             if unpack_frame {
                                 unpack_frame_v2(&context.frame_buffer, frame_data, &mut frame);
                                 // Store the decoded frame
-                                info!("Unpacked frame {:?}", context.frame_count);
                                 context.frame_buffer = Some(frame);
                             }
+
 
                             // Pop used bytes off the decoded buffer
                             let remaining_size = remaining.len();
@@ -313,7 +319,7 @@ impl CptvPlayerContext {
                             }
                             // Increment the frame count
                             context.frame_count += 1;
-                            info!("increment frame {:?}", context.frame_count);
+
                             break;
                         }
                         Err(e) => {
@@ -340,25 +346,10 @@ impl CptvPlayerContext {
                                         );
                                         break;
                                     } else {
-                                        warn!("Parse error??");
+                                        warn!("Parse error?? {:?}", _kind);
                                         context.downloaded_data.parse_error = true;
+                                        context.downloaded_data.gz_ended = true;
                                         break;
-                                        // // We might have some kind of parsing error with the header?
-                                        // let r = Vec::from(&remaining[..]);
-                                        // let (ctx, ended, _) =
-                                        //     CptvPlayerContext::fetch_bytes(context).await?;
-                                        // if ended {
-                                        //     info!(
-                                        //         "here {}, {:?}, ended {}",
-                                        //         &format!("kind {:?}", kind),
-                                        //         &r[..],
-                                        //         ended
-                                        //     );
-                                        // }
-                                        // context = ctx;
-                                        // if ended {
-                                        //     break;
-                                        // }
                                     }
                                 }
                             }
@@ -459,6 +450,7 @@ impl CptvPlayerContext {
                         info!("Pump was dry, Asking for more bytes");
                         context.get_bytes_from_stream(None).await?;
                     } else {
+
                         // Free memory used by reader
                         context.reader_mut().inner.shrink_to_fit();
                         context.downloaded_data.gz_ended = true;
@@ -485,7 +477,6 @@ impl CptvPlayerContext {
                 return Ok((context, true, 0));
             }
         };
-        info!("Gzip read {}", bytes_read);
         context.downloaded_data.num_decompressed_bytes += bytes_read;
         Ok((context, false, bytes_read))
     }
@@ -499,6 +490,7 @@ impl CptvPlayerContext {
                 let (ctx, should_continue, _) = CptvPlayerContext::fetch_bytes(context).await?;
                 context = ctx;
                 if context.downloaded_data.parse_error {
+                    info!("Halt on parse error");
                     break;
                 }
                 if should_continue {
@@ -528,7 +520,7 @@ impl CptvPlayerContext {
                             }
                             nom::Err::Error((_, _kind)) => {
                                 // We might have some kind of parsing error with the header?
-                                //info!("{}", &format!("kind {:?}", kind));
+                                info!("{}", &format!("kind {:?}", _kind));
                                 break;
                             }
                             nom::Err::Failure((i, kind)) => {

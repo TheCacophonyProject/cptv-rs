@@ -4,7 +4,8 @@ use log::{info, trace, warn};
 use nom::bytes::streaming::take;
 use nom::character::streaming::char;
 use nom::number::streaming::{le_f32, le_u32, le_u64, le_u8};
-use types::{CptvHeader, Cptv2Header, CptvFrame, FieldType};
+use types::{Cptv2Header, CptvFrame, FieldType};
+use crate::CptvHeader;
 
 // TODO(jon): Move most of this to cptv_common.  cptv_common might end up having
 // streaming and non-streaming versions, but I don't think we care too much at the moment.
@@ -110,7 +111,7 @@ pub fn decode_frame_header_v2(
             FieldType::TimeOn => {
                 frame.time_on = le_u32(val)?.1;
             }
-            FieldType::PixelBytes => {
+            FieldType::BitsPerPixel => {
                 frame.bit_width = le_u8(val)?.1;
             }
             FieldType::FrameSize => {
@@ -138,7 +139,7 @@ pub fn decode_frame_header_v2(
             }
         }
     }
-    debug_assert!(frame.frame_size > 0);
+    assert!(frame.frame_size > 0);
     let (i, data) = take(frame.frame_size as usize)(outer)?;
     Ok((i, (data, frame)))
 }
@@ -250,6 +251,10 @@ impl<'a> BitUnpacker<'a> {
 
 impl<'a> Iterator for BitUnpacker<'a> {
     type Item = i32;
+
+    // TODO(jon): Can we have a faster path for 8 and 16 bit packing, since this seems to be the
+    //  norm now?
+
     fn next(&mut self) -> Option<Self::Item> {
         while self.num_bits < self.bit_width {
             match self.input.get(self.offset) {

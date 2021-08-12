@@ -3,7 +3,8 @@ import {performance} from "perf_hooks";
 
 (async function() {
   const start = performance.now();
-  const file = "../cptv-files/20200130-031836.cptv";
+  //const file = "../cptv-files/20200130-031836.cptv";
+  const file = "../cptv-files/20210812-073822.cptv";
   const decoder = new CptvDecoder();
   const fileName = new URL(file, import.meta.url).pathname;
   await decoder.initWithCptvFile(fileName);
