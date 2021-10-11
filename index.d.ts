@@ -17,14 +17,6 @@ declare class CptvDecoder {
     initWithCptvUrl(url: string): Promise<string | boolean>;
 
     /**
-     * NodeJS usage only:
-     * Initialise a new player with a local file.  Uses readFileAsync to stream the CPTV file.
-     * @param filePath (String)
-     * @returns True on success, or an error string on failure (String | Boolean)
-     */
-    initWithCptvFile(filePath: string): Promise<string | boolean>;
-
-    /**
      * Initialise a new player with an already loaded local file.
      * @param fileBytes (Uint8Array)
      * @returns True on success, or an error string on failure (String | Boolean)
@@ -37,13 +29,6 @@ declare class CptvDecoder {
      * @param fileBytes (Uint8Array)
      */
     getBytesMetadata(fileBytes: Uint8Array): Promise<CptvHeader>;
-
-    /**
-     * Get the header and duration in seconds of a local CPTV file given by filePath.
-     * This function reads and consumes the entire file, without decoding actual frames.
-     * @param filePath (String)
-     */
-    getFileMetadata(filePath: string): Promise<CptvHeader>;
 
     /**
      * Get the header and duration of a remote CPTV file given by url.
@@ -75,9 +60,15 @@ declare class CptvDecoder {
     getLoadProgress(): Promise<number>;
 
     /**
-     * Terminate the decoder worker thread
+     * Free resources associated with the currently decoded file.
      */
-    close(): void;
+    free(): Promise<void>;
+
+    /**
+     * Terminate the decoder worker thread - because the worker thread takes a while to init, ideally we want to
+     * do this only when the thread closes.
+     */
+    close(): Promise<void>;
 
     /**
      * If the decode halted with errors.  Use this in the API to see if we should continue processing a file, or mark it
@@ -151,39 +142,3 @@ export interface CptvFrame {
     meta: CptvFrameHeader;
 }
 
-/**
- * Helper function for rendering a raw frame into an Rgba destination buffer
- * @param targetFrameBuffer (Uint8ClampedArray) - destination frame buffer.  Must be width * height * 4 length
- * @param frame (Uint16Array) - Source raw frame of width * height uint16 pixels
- * @param colourMap (Uint32Array) Array of Rgba colours in uin32 form for mapping into 0..255 space
- * @param min (number) min value to use for normalisation
- * @param max (number) max value to use for normalisation
- */
-export function renderFrameIntoFrameBuffer(
-    targetFrameBuffer: Uint8ClampedArray,
-    frame: Uint16Array,
-    colourMap: Uint32Array,
-    min: number,
-    max: number
-): void;
-
-/**
- * Get the frame index at a given time offset, taking into account the presence of a background frame.
- * @param time {Number}
- * @param duration {Number}
- * @param fps {Number}
- * @param totalFramesIncludingBackground {Number}
- * @param hasBackgroundFrame {Boolean}
- */
-export function getFrameIndexAtTime(
-    time: number,
-    duration: number,
-    fps: number,
-    totalFramesIncludingBackground: number | false,
-    hasBackgroundFrame: boolean
-): number;
-
-/**
- * Default Colour maps to use for rendering frames on both front-end and back-end.
- */
-export const ColourMaps: readonly [string, Uint32Array][];

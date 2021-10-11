@@ -3,13 +3,13 @@
   "collaborators": [
     "jon hardie <jon@cacophony.org.nz>"
   ],
-  "version": "1.2.1",
+  "version": "1.2.2",
   "scripts": {
-    "build-webpack": "wasm-pack build decoder/ --out-name index --out-dir ../pkg",
-    "build-encoder": "wasm-pack build encoder/ --target nodejs --out-name encoder",
-    "build-node": "wasm-pack build decoder/ --target nodejs --out-name index --out-dir ../pkg-node",
-    "node-example-read-all-frames": "node --no-warnings=ExperimentalWarnings --experimental-json-modules examples/read-all-frames.js",
-    "node-example-read-metadata-and-duration": "node --no-warnings=ExperimentalWarnings --experimental-json-modules examples/get-file-metadata.js"
+    "build-encoder": "wasm-pack build encoder/ --target web --out-name encoder",
+    "build-decoder": "./build.sh",
+    "node-example-read-all-frames": "node examples/read-all-frames.js",
+    "node-example-read-metadata-and-duration": "node examples/get-file-metadata.js",
+    "node-example-generate-test-cptv": "node examples/generate-test-cptv-file.js"
   },
   "dependencies": {
     "scale-color-perceptual": "^1.1.2"

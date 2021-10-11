@@ -194,7 +194,7 @@ pub fn create_test_cptv_file(params: JsValue) -> Uint8Array {
         .unwrap();
 
     let recording_date_time = Reflect::get(&params, &JsValue::from_str("recordingDateTime"))
-        .unwrap()
+        .expect("should have recordingDateTime field")
         .as_string()
         .unwrap();
 
@@ -242,13 +242,18 @@ pub fn create_test_cptv_file(params: JsValue) -> Uint8Array {
         .as_f64()
         .map(|x| x as f32);
 
+    let fps = Reflect::get(&params, &JsValue::from_str("fps"))
+        .unwrap()
+        .as_f64()
+        .map_or(1, |x| x as u8);
+
     let meta = Cptv2Header {
         timestamp: (recording_date_time.timestamp() * 1000 * 1000) as u64,
         width,
         height,
         compression: 0,
         device_name: "Test device".to_string(),
-        fps: 1,
+        fps,
         brand,
         model,
         device_id,
@@ -425,6 +430,7 @@ pub fn create_test_cptv_file(params: JsValue) -> Uint8Array {
     let mut all_frames: Vec<CptvFrame> = Vec::new();
 
     if meta.has_background_frame {
+        info!("Writing background frame");
         let mut background_frame = CptvFrame::new_with_dimensions(20, 15);
         background_frame.is_background_frame = true;
         background_frame.image_data = FrameData::with_dimensions_and_data(20, 15, &BG_FRAME);
@@ -434,9 +440,10 @@ pub fn create_test_cptv_file(params: JsValue) -> Uint8Array {
 
 
     // + 1 because a 1 second recording still needs two frames, a start and an end
-    for seconds in 0..duration_seconds + 1 {
+    for frames in 0..=(duration_seconds * fps as usize) {
+        info!("Writing frame #{}", frames);
         let mut test_frame = CptvFrame::new_with_dimensions(20, 15);
-        test_frame.image_data = FrameData::with_dimensions_and_data(20, 15, &set_number(&TEST_FRAME, seconds as u32));
+        test_frame.image_data = FrameData::with_dimensions_and_data(20, 15, &set_number(&TEST_FRAME, frames as u32));
         delta_encoded_frames.push(delta_encode_frame(all_frames.last(), &test_frame));
         all_frames.push(test_frame);
     }

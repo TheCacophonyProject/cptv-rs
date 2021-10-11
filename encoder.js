@@ -1,17 +1,15 @@
-import fs from "fs";
-import {CptvDecoder} from "./index.js";
-import {performance} from "perf_hooks";
-let encoder;
-const init = async() => {
-  if (!fs.existsSync("./encoder/pkg/encoder.cjs")) {
-    fs.renameSync("./encoder/pkg/encoder.js", "./encoder/pkg/encoder.cjs");
-  }
-  encoder = await import("./encoder/pkg/encoder.cjs");
-}
-
+import init, { createTestCptvFile as create } from "./encoder/pkg/encoder.js";
+import fs from "fs/promises";
+let initedWasm = false;
 export const createTestCptvFile = async (params) => {
-  if (!encoder) {
-    await init();
+  if (typeof window !== "undefined") {
+    console.error("This should only be used from within a nodejs context");
+    return;
+  }
+  if (!initedWasm) {
+    const wasm = await fs.readFile("./encoder/pkg/encoder_bg.wasm");
+    await init(wasm);
+    initedWasm = true;
   }
   if (params.recordingDateTime && typeof params.recordingDateTime === 'object') {
     params.recordingDateTime = new Date(params.recordingDateTime).toISOString();
@@ -27,45 +25,8 @@ export const createTestCptvFile = async (params) => {
     latitude: 1,
     duration: 10,
     longitude: 1,
+    fps: 1,
     hasBackgroundFrame: true,
   };
-  return new Uint8Array(encoder.createTestCptvFile({...defaultParams, ...params}));
+  return new Uint8Array(create({...defaultParams, ...params}));
 };
-
-
-(async function main() {
-  const params = {
-    duration: 300,
-    hasBackgroundFrame: true,
-    recordingDateTime: new Date().toISOString()
-  };
-  const s = performance.now();
-  const file = await createTestCptvFile(params);
-  console.log("Create test file", performance.now() - s);
-  fs.writeFileSync("test.cptv", file);
-
-  const j = performance.now();
-  const decoder = new CptvDecoder();
-  const meta = await decoder.getBytesMetadata(file);
-  console.log("Get meta", performance.now() - j);
-  await decoder.initWithLocalCptvFile(new Uint8Array(file));
-  const start = performance.now();
-  const header = await decoder.getHeader();
-  const frames = [];
-  let finished = false;
-  while (!finished) {
-    const frame = await decoder.getNextFrame();
-    finished = await decoder.getTotalFrames();
-    if (!finished) {
-      frames.push(frame);
-    }
-  }
-  const total = await decoder.getTotalFrames();
-  console.assert(!await decoder.hasStreamError());
-  decoder.close();
-  console.assert(total === frames.length);
-  const end = performance.now();
-  console.log(`Time elapsed: ${end - start}ms`);
-  console.log("# Frames: ", frames.length);
-  console.log("Header info", header);
-}());
