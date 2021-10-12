@@ -19,3 +19,4 @@ export interface CptvFileParams {
 }
 
 export function createTestCptvFile(params: CptvFileParams): Promise<Uint8Array>;
+export function createTestCptvFileNode(params: CptvFileParams): Promise<Uint8Array>;
