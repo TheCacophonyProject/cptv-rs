@@ -3,7 +3,7 @@
   "collaborators": [
     "jon hardie <jon@cacophony.org.nz>"
   ],
-  "version": "1.2.2",
+  "version": "1.2.4",
   "scripts": {
     "build-encoder": "wasm-pack build encoder/ --target web --out-name encoder",
     "build-decoder": "./build.sh",

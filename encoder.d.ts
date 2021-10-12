@@ -6,6 +6,7 @@ export interface CptvFileParams {
     model?: string;
     serialNumber?: number;
     firmwareVersion?: string;
+    fps?: number;
     latitude?: number;
     longitude?: number;
     duration?: number;
