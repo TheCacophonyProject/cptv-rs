@@ -3,10 +3,10 @@
   "collaborators": [
     "jon hardie <jon@cacophony.org.nz>"
   ],
-  "version": "1.2.5",
+  "version": "1.2.6",
   "scripts": {
-    "build-encoder": "wasm-pack build encoder/ --target web --out-name encoder",
-    "build-decoder": "./build.sh",
+    "build-encoder": "./build-encoder.sh",
+    "build-decoder": "./build-decoder.sh",
     "node-example-read-all-frames": "node examples/read-all-frames.js",
     "node-example-read-metadata-and-duration": "node examples/get-file-metadata.js",
     "node-example-generate-test-cptv": "node examples/generate-test-cptv-file.js"
