@@ -1,14 +1,16 @@
 import init, { createTestCptvFile as create } from "./encoder/pkg/encoder.js";
-import fs from "fs/promises";
+
 let initedWasm = false;
+
 export const createTestCptvFile = async (params) => {
-  if (typeof window !== "undefined") {
-    console.error("This should only be used from within a nodejs context");
-    return;
-  }
   if (!initedWasm) {
-    const wasm = await fs.readFile("./encoder/pkg/encoder_bg.wasm");
-    await init(wasm);
+    if (typeof window !== "undefined") {
+      await init();
+    } else {
+      const fs = await import("fs/promises");
+      const wasm = await fs.readFile("./encoder/pkg/encoder_bg.wasm");
+      await init(wasm);
+    }
     initedWasm = true;
   }
   if (params.recordingDateTime && typeof params.recordingDateTime === 'object') {
