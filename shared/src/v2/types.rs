@@ -49,7 +49,7 @@ impl Cptv2Header {
             height: 0,
             compression: 0,
             device_name: "".to_string(),
-            fps: 0,
+            fps: 9,
             brand: None,
             model: None,
             device_id: None,

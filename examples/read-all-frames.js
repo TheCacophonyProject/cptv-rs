@@ -1,13 +1,16 @@
 import {CptvDecoder} from "../index.js";
 import {performance} from "perf_hooks";
+import fs from "fs/promises";
 
 (async function() {
   const start = performance.now();
   //const file = "../cptv-files/20200130-031836.cptv";
-  const file = "../cptv-files/20210812-073822.cptv";
+  //const file = "../cptv-files/20210812-073822.cptv";
+  const file = "../cptv-files/20211029-042754-last-2-frames.cptv";
   const decoder = new CptvDecoder();
   const fileName = new URL(file, import.meta.url).pathname;
-  await decoder.initWithCptvFile(fileName);
+  const fileBytes = await fs.readFile(fileName);
+  await decoder.initWithLocalCptvFile(fileBytes);
   const header = await decoder.getHeader();
   const frames = [];
   let finished = false;
