@@ -1,7 +1,7 @@
 let encoder;
 export const createTestCptvFile = async (params) => {
   if (!encoder) {
-    encoder = await import("./encoder/pkg/encoder.js");
+    encoder = (await import("./encoder/pkg/encoder-node.cjs")).default;
   }
   if (params.recordingDateTime && typeof params.recordingDateTime === 'object') {
     params.recordingDateTime = new Date(params.recordingDateTime).toISOString();
