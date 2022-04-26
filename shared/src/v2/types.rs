@@ -6,7 +6,7 @@ use std::fmt::{Debug, Formatter};
 use std::ops::{Index, IndexMut};
 use std::time::Duration;
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 pub struct Cptv2Header {
     pub timestamp: u64,
     pub width: u32,
@@ -36,6 +36,13 @@ pub struct Cptv2Header {
     pub accuracy: Option<f32>,
     #[serde(rename = "hasBackgroundFrame")]
     pub has_background_frame: bool,
+
+    #[serde(rename = "totalFrames")]
+    pub total_frame_count: Option<u16>,
+    #[serde(rename = "minValue")]
+    pub min_value: Option<u16>,
+    #[serde(rename = "maxValue")]
+    pub max_value: Option<u16>,
 }
 
 impl Cptv2Header {
@@ -63,6 +70,9 @@ impl Cptv2Header {
             altitude: None,
             accuracy: None,
             has_background_frame: false,
+            total_frame_count: None,
+            min_value: None,
+            max_value: None,
         }
     }
 }
@@ -145,40 +155,50 @@ impl FrameData {
         frame
     }
 
-    pub fn snaking_iter(&self) -> SnakingIterator {
-        SnakingIterator::new(&self)
+    pub fn snaking_iter(&self) -> impl Iterator {
+        //SnakingIterator::new(&self)
+        (0..self.width).chain((self.width - 1)..=0).cycle().take(self.width * self.height)
     }
 }
 
-pub struct SnakingIterator<'iter> {
-    data: &'iter FrameData,
+pub struct SnakingIterator {
+    total: usize,
     stride: usize,
-    offset: usize
+    x: isize,
+    offset: usize,
 }
 
-impl SnakingIterator<'_> {
+impl SnakingIterator {
     pub fn new(frame: &FrameData) -> SnakingIterator {
         SnakingIterator {
-            data: frame,
+            total: frame.width * frame.height,
             stride: frame.width,
+            x: 0,
             offset: 0
         }
     }
 }
 
-impl Iterator for SnakingIterator<'_> {
-    type Item = u16;
+impl Iterator for SnakingIterator {
+    type Item = usize;
 
+    // TODO - Really just want an iterator that yields width * height of 0..width-1 in alternating reverse order?
+
+    #[inline(always)]
     fn next(&mut self) -> Option<Self::Item> {
         let y = self.offset / self.stride;
-        let is_odd = y % 2 == 1;
-        let x = self.offset % self.stride;
-        if y * self.stride + x < self.data.data.len() {
-            let output = if is_odd {
-                self.data[y][self.stride - (x + 1)]
-            } else {
-                self.data[y][x]
-            };
+        //let x = self.offset % self.stride;
+        //let y = self.row;
+        if self.offset < self.total {
+            //let x = (-(x as isize - ((y & 1) as isize * (self.stride - 1) as isize))).abs() as usize;
+            let output = y * self.stride + self.x as usize; //unsafe { *self.data.data.get_unchecked(y * self.stride + self.x as usize) };
+            //dbg!(self.x);
+            //dbg!((1isize + ((y & 1) as isize * -2)) as isize);
+            self.x += (1isize + ((y & 1) as isize * -2)) as isize;
+            assert!(self.x >= 0);
+            assert!(self.x < self.stride as isize);
+            //dbg!(self.x);
+            //dbg!(self.x);
             self.offset += 1;
             Some(output)
         } else {
@@ -191,12 +211,14 @@ impl Iterator for SnakingIterator<'_> {
 impl Index<usize> for FrameData {
     type Output = [u16];
 
+    #[inline(always)]
     fn index(&self, index: usize) -> &Self::Output {
         &self.data[(index * self.width)..(index * self.width) + self.width]
     }
 }
 
 impl IndexMut<usize> for FrameData {
+    #[inline(always)]
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         &mut self.data[(index * self.width)..(index * self.width) + self.width]
     }
@@ -313,9 +335,8 @@ pub enum FieldType {
     BackgroundFrame = b'g',
 
     // TODO: Other header fields I've added to V2
-    MinValue = b'R',
-    MaxValue = b'W',
-    TableOfContents = b'Q',
+    MinValue = b'Q',
+    MaxValue = b'K',
     NumFrames = b'J',
     FramesPerIframe = b'G',
     FrameHeader = b'F',
@@ -349,11 +370,10 @@ impl From<char> for FieldType {
             'S' => LocTimestamp,
             'A' => Altitude,
             'U' => Accuracy,
-            'R' => MinValue,
-            'W' => MaxValue,
+            'Q' => MinValue,
+            'K' => MaxValue,
             'N' => CameraSerial,
             'V' => FirmwareVersion,
-            'Q' => TableOfContents,
             'J' => NumFrames,
             'Z' => FrameRate,
             'G' => FramesPerIframe,

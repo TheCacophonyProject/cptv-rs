@@ -1,10 +1,10 @@
 [workspace]
-members = ["decoder", "encoder", "shared"]
+members = ["decoder", "encoder", "shared", "codec_test", "encoder_py_bindings"]
 
 [profile.release]
 # Unset this if wasm-opt tool is available on your platform to further optimise file-size of generated wasm blob.
-wasm-opt = false
-
-#lto = true
+ #wasm-opt = false
+lto = true
 #opt-level='s'
 panic = "abort"
+debug = true

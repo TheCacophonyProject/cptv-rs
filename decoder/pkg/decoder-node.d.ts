@@ -6,23 +6,23 @@ export class CptvPlayerContext {
   free(): void;
 /**
 * @param {any} stream
-* @returns {any}
+* @returns {Promise<CptvPlayerContext>}
 */
-  static newWithStream(stream: any): any;
+  static newWithStream(stream: any): Promise<CptvPlayerContext>;
 /**
 * @returns {boolean}
 */
   streamComplete(): boolean;
 /**
 * @param {CptvPlayerContext} context
-* @returns {any}
+* @returns {Promise<CptvPlayerContext>}
 */
-  static countTotalFrames(context: CptvPlayerContext): any;
+  static countTotalFrames(context: CptvPlayerContext): Promise<CptvPlayerContext>;
 /**
 * @param {CptvPlayerContext} context
-* @returns {any}
+* @returns {Promise<CptvPlayerContext>}
 */
-  static fetchNextFrame(context: CptvPlayerContext): any;
+  static fetchNextFrame(context: CptvPlayerContext): Promise<CptvPlayerContext>;
 /**
 * @returns {any}
 */
@@ -57,9 +57,9 @@ export class CptvPlayerContext {
   getFramesPerIframe(): number;
 /**
 * @param {CptvPlayerContext} context
-* @returns {any}
+* @returns {Promise<CptvPlayerContext>}
 */
-  static fetchHeader(context: CptvPlayerContext): any;
+  static fetchHeader(context: CptvPlayerContext): Promise<CptvPlayerContext>;
 /**
 * @returns {any}
 */

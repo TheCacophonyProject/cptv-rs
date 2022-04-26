@@ -12,11 +12,11 @@ export interface CptvFileParams {
     duration?: number;
     hasBackgroundFrame: boolean;
     motionConfig?: string; // JSON
-    previewSecs?: undefined,
-    locTimestamp?: undefined,
-    altitude?: undefined,
-    accuracy?: undefined,
+    previewSecs?: undefined;
+    locTimestamp?: undefined;
+    altitude?: undefined;
+    accuracy?: undefined;
+    additionalMetadata?: undefined;
 }
 
 export function createTestCptvFile(params: CptvFileParams): Promise<Uint8Array>;
-export function createTestCptvFileNode(params: CptvFileParams): Promise<Uint8Array>;

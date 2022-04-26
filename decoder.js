@@ -10,7 +10,7 @@ export class CptvDecoder {
   }
 
   async init() {
-    await this.free();
+    this.free();
     messageQueue = {};
     if (!this.inited) {
       const onMessage = (message) => {

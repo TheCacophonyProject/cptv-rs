@@ -108,6 +108,9 @@ export interface CptvHeader {
     // Only set if we used one of the getFileMetadata|getStreamMetadata, and scan the entire file.
     duration?: number;
     totalFrames?: number;
+
+    minValue?: number;
+    maxValue?: number;
 }
 
 export interface CptvFrameHeader {

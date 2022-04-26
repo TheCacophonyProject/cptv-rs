@@ -1,0 +1,21 @@
+[package]
+name = "encoder-py-bindings"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+cptv-shared = { path = "../shared" }
+cptv-decoder = { path = "../decoder" }
+cptv-encoder = { path = "../encoder" }
+
+[dependencies.pyo3]
+version = "0.15.1"
+features = ["extension-module"]
+
+
+[lib]
+name = "encoder_py_bindings"
+crate-type = ["cdylib", "lib"]
+

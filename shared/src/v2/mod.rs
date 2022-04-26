@@ -3,7 +3,7 @@ pub mod types;
 use log::{info, trace, warn};
 use nom::bytes::streaming::take;
 use nom::character::streaming::char;
-use nom::number::streaming::{le_f32, le_u32, le_u64, le_u8};
+use nom::number::streaming::{le_f32, le_u32, le_u64, le_u8, le_u16};
 use types::{Cptv2Header, CptvFrame, FieldType};
 use crate::CptvHeader;
 
@@ -76,6 +76,15 @@ pub fn decode_cptv2_header(i: &[u8]) -> nom::IResult<&[u8], CptvHeader> {
             FieldType::Accuracy => {
                 meta.accuracy = Some(le_f32(val)?.1);
             }
+            FieldType::NumFrames => {
+                meta.total_frame_count = Some(le_u16(val)?.1);
+            }
+            FieldType::MinValue => {
+                meta.min_value = Some(le_u16(val)?.1);
+            }
+            FieldType::MaxValue => {
+                meta.max_value = Some(le_u16(val)?.1);
+            }
             FieldType::BackgroundFrame => {
                 let has_background_frame = le_u8(val)?.1;
                 // NOTE: We expect this to always be 1 if present
@@ -93,16 +102,24 @@ pub fn decode_frame_header_v2(
     data: &[u8],
     width: usize,
     height: usize,
+    debug: bool,
 ) -> nom::IResult<&[u8], (&[u8], CptvFrame)> {
     let (i, val) = take(1usize)(data)?;
     let (_, _) = char('F')(val)?;
     let (i, num_frame_fields) = le_u8(i)?;
+    // if debug {
+    //     warn!("Num frame fields {}", num_frame_fields);
+    // }
 
     let mut frame = CptvFrame::new_with_dimensions(width, height);
     let mut outer = i;
     for _ in 0..num_frame_fields as usize {
         let (i, field_length) = le_u8(outer)?;
         let (i, field) = take(1usize)(i)?;
+
+        // if debug {
+        //     warn!("Decoding field {}", field[0] as char);
+        // }
         let (_, field_code) = char(field[0] as char)(field)?;
         let (i, val) = take(field_length)(i)?;
         outer = i;
@@ -164,6 +181,8 @@ fn decode_image_data_v2(
                 .enumerate()
             {
                 let index = index + 1;
+
+                // TODO: Snaking iterator like with encoder, and unsafe indexing.
                 let y = index / width;
                 let x = index % width;
                 let x = if y & 1 == 1 { width - x - 1 } else { x };

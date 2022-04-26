@@ -1,5 +1,5 @@
 use js_sys::{Reflect, Uint16Array, Uint8Array};
-use log::Level;
+use log::{error, Level};
 #[allow(unused)]
 use log::{info, trace, warn};
 use std::io::{ErrorKind, Read};
@@ -14,7 +14,7 @@ use cptv_shared::v2::types::CptvFrame;
 use cptv_shared::CptvHeader;
 use crate::decoder::decode_cptv_header;
 
-mod decoder;
+pub mod decoder;
 
 struct DownloadedData {
     gz_decoded: VecDeque<u8>,
@@ -102,6 +102,8 @@ pub struct CptvPlayerContext {
     last_time_on: usize,
     frame_buffer: Option<CptvFrame>,
     frame_count: usize,
+
+    // TODO(jon): Can we make this implement the Read trait?
     reader: Option<ReadableStreamDefaultReader>,
     gz_buffer: Vec<u8>,
     gz_decoder: Option<Decoder<ResumableReader>>,
@@ -263,10 +265,15 @@ impl CptvPlayerContext {
         mut context: CptvPlayerContext,
     ) -> Result<CptvPlayerContext, JsValue> {
         let prev_frame_count = context.frame_count;
-        context = CptvPlayerContext::parse_next_frame(context, true).await?;
-        if context.frame_count == prev_frame_count && !context.reader().stream_ended {
+        let mut last_poll = prev_frame_count;
+        while context.frame_count == prev_frame_count && !context.reader().stream_ended {
             // We didn't get the frame, so poll again.
-            info!("Frame same, so poll again");
+            // warn!("Polling for frame {}", context.frame_count + 1);
+            if last_poll == context.frame_count + 1 {
+               error!("Polling again for {}", context.frame_count + 1);
+            } else {
+               last_poll = prev_frame_count + 1;
+            }
             context = CptvPlayerContext::parse_next_frame(context, true).await?;
         }
         if context.downloaded_data.parse_error {
@@ -297,11 +304,14 @@ impl CptvPlayerContext {
                             CptvPlayerContext::fetch_bytes(context).await?;
                         context = ctx;
                         if bytes_read == 0 || context.downloaded_data.parse_error {
+                            if bytes_read == 0 {
+                                context = CptvPlayerContext::fetch_bytes(context).await?.0;
+                            }
                             break;
                         }
                         continue;
                     }
-                    match decode_frame_header_v2(frame_data, width, height) {
+                    match decode_frame_header_v2(frame_data, width, height, false) {
                         Ok((remaining, (frame_data, mut frame))) => {
                             context.last_time_on = frame.time_on as usize;
                             // Make sure there are enough bytes to decode another frame. width * height * (frame.bit_width / 8
@@ -346,7 +356,10 @@ impl CptvPlayerContext {
                                         );
                                         break;
                                     } else {
+                                        warn!("Decode frame data {}", frame_data.len());
+                                        decode_frame_header_v2(frame_data, width, height, true);
                                         warn!("Parse error?? {:?}", _kind);
+                                        context.frame_count += 1;
                                         context.downloaded_data.parse_error = true;
                                         context.downloaded_data.gz_ended = true;
                                         break;

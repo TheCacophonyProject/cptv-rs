@@ -162,14 +162,14 @@ class CptvDecoderInterface {
     const unlocker = new Unlocker();
     await this.lockIsUncontended(unlocker);
     this.locked = true;
-    if (!this.hasValidContext()) {
-      debugger;
-    }
     if (this.hasValidContext()) {
       try {
         this.playerContext = await CptvPlayerContext.fetchNextFrame(this.playerContext);
       } catch (e) {
         this.streamError = e;
+      }
+      if (!this.playerContext || this.playerContext && !this.playerContext.ptr) {
+        debugger;
       }
     } else {
       console.warn("Fetch next failed");
@@ -185,8 +185,10 @@ class CptvDecoderInterface {
     if (frameHeader && frameHeader.imageData.width !== 32) {
       const sameFrameAsPrev = frameHeader && this.prevFrameHeader && frameHeader.timeOnMs === this.prevFrameHeader.timeOnMs;
       if (sameFrameAsPrev && this.getTotalFrames() === null) {
+        debugger;
+        const t = this.getTotalFrames();
         this.prevFrameHeader = frameHeader;
-        return await this.fetchNextFrame();
+        return null;//await this.fetchNextFrame();
       }
       this.prevFrameHeader = frameHeader;
     }
@@ -226,7 +228,11 @@ class CptvDecoderInterface {
     if (this.hasStreamError()) {
       return this.streamError;
     } else {
-      totalFrameCount = await this.countTotalFrames();
+      if (header.totalFrames) {
+        totalFrameCount = header.totalFrames;
+      } else {
+        totalFrameCount = await this.countTotalFrames();
+      }
       const duration = (1 / header.fps) * totalFrameCount;
       return {
         ...header,
@@ -237,7 +243,7 @@ class CptvDecoderInterface {
   }
 
   async getBytesMetadata(fileBytes) {
-    await this.initWithFileBytes(fileBytes, "", !!fs);
+    await this.initWithFileBytes(fileBytes, "", typeof __ENV__ === "undefined");
     return await this.getMetadata();
   }
 

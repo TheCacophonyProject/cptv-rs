@@ -4,6 +4,7 @@ pub mod v3;
 use crate::v2::types::Cptv2Header;
 use crate::v3::types::Cptv3Header;
 
+#[derive(Debug)]
 pub enum CptvHeader {
     UNINITIALISED,
 

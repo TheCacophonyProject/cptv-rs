@@ -2,6 +2,7 @@ use crate::v2::types::Cptv2Header;
 
 // Cptv3 header includes the v2 header + additional fields to allow seeking.
 // Possible future work to incorporate this into our player.
+#[derive(Debug)]
 pub struct Cptv3Header {
     pub v2: Cptv2Header,
     pub min_value: u16,

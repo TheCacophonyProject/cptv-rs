@@ -1,0 +1,14 @@
+#[build]
+##target = "armv7-unknown-linux-gnueabihf"
+#target = "arm-unknown-linux-musleabi"
+
+[target.armv7-unknown-linux-gnueabihf]
+#linker = "arm-linux-gnueabihf-ld"
+#linker = "arm-linux-gnueabihf-gcc"
+# Optimize for raspberry pi 3 CPU
+rustflags = "-C target-cpu=cortex-a53"
+
+[target.arm-unknown-linux-musleabihf]
+linker = "arm-linux-gnueabihf-ld"
+# Optimize for raspberry pi 3 CPU
+rustflags = "-C target-cpu=cortex-a53"
