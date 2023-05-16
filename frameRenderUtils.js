@@ -1,15 +1,15 @@
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
-import viridis from "scale-color-perceptual/rgb/viridis.json";
+import viridis from "scale-color-perceptual/rgb/viridis.json" assert { type: "json" };
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
-import plasma from "scale-color-perceptual/rgb/plasma.json";
+import plasma from "scale-color-perceptual/rgb/plasma.json" assert { type: "json" };
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
-import magma from "scale-color-perceptual/rgb/magma.json";
+import magma from "scale-color-perceptual/rgb/magma.json" assert { type: "json" };
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
-import inferno from "scale-color-perceptual/rgb/inferno.json";
+import inferno from "scale-color-perceptual/rgb/inferno.json" assert { type: "json" };
 
 import defaultColourmap from "./DefaultColourmap.js";
 
